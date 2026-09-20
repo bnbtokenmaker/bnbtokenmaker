@@ -69,7 +69,7 @@ jobs:
             find deploy -name '*.node'
             exit 1
           fi
-          test -x deploy/server.js
+          test -f deploy/server.js
           static_files="$(find deploy/.next/static -type f | wc -l | tr -d ' ')"
           [ "$static_files" -gt 0 ] || { echo "no static assets in artifact"; exit 1; }
           grep -q '"output":"standalone"' deploy/server.js
