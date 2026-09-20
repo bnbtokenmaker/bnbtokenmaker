@@ -77,8 +77,60 @@ discount is always measured against a real price — never a fabricated one.
 - `toPlatformFeeDto` → JSON-safe `PlatformFeeResultDto`
 - All re-exported from `lib/pricing/index.ts`.
 
+## Server-owned pricing layer (`lib/pricing/server/`)
+
+The pure domain (`features.ts`, `quote.ts`, `money.ts`) never reads a database,
+env, or route context and stays **framework-agnostic** (usable from any
+page/route/tool). On top of it sits a thin **server-only** layer that owns the
+authoritative source of prices and campaign state:
+
+- `server/config.ts` — the **only** place that imports `import "server-only"`.
+  Holds the current `CampaignState` (the daily campaign reference →
+  effective→discount shape) and `toConfigDto` serialization. Replaces the
+  deleted legacy `lib/pricing/config.ts`.
+- `server/pricing-source.ts` — `createStaticPricingSource` builds a
+  `PricingSource` from a config + optional campaign. `PricingSource`
+  (see `server/types.ts`) is the narrow capability interface consumed by every
+  server caller; no consumer reaches for `lib/pricing/config` directly.
+- `server/current-pricing-source.ts` — the production `getCurrentPricingSource`
+  singleton the `/create` page imports, so the source always resolves from
+  **server config**, never from anything the client could influence.
+- `server/quote.ts` — `quotePlatformFee`, `resolveCampaignForTime`,
+  `toQuoteDto`, `parseQuoteRequest`, `isKnownPricingVersion`. The quote path is
+  deterministic and wei/serialization-safe (see `quote.ts`).
+- `app/api/pricing/quote/route.ts` — `POST` endpoint. It is `export const
+  dynamic = "force-dynamic"` (never cached static) and returns
+  `QuoteResponseDto`/`PricingErrorDto`. The `/create` page calls it
+  client-side only for **live quotes**; its Server Component pre-quotes from the
+  server source so the page renders server-authoritative pricing with no
+  client round-trip.
+
+### Server-only import rule
+
+`import "server-only"` must appear **only** in server wiring
+(`server/config.ts`, `server/current-pricing-source.ts`). The pure domain
+modules (`quote.ts`, `features.ts`, `money.ts`, `types.ts`) and the **test
+fixtures** (which mirror the dev config) intentionally do not import it, so the
+domain stays unit-testable under the plain Node runner and never drags
+server-only modules into the client bundle.
+
+### Quote DTO & wei serialization
+
+- `toQuoteDto` produces a JSON-safe `QuoteResponseDto` where every wei amount
+  is a **string** (e.g. `basePriceWei: "50000000000000000"`) and display
+  amounts are BNB decimal strings (e.g. `totalBnb: "0.065"`). No `bigint`
+  literal (`123n`) ever reaches `JSON.stringify` output.
+- `parseQuoteRequest` enforces the quote **boundary**: it accepts only
+  currently **paid/purchasable** features; included and coming-soon ids are
+  rejected as `unknown-feature` because they cannot be quoted as paid add-ons.
+- Campaign windows are resolved by `resolveCampaignForTime`: a campaign only
+  produces `discountWei` in the DTO when it is genuinely active in-window for
+  the `now` supplied; future/expired/inactive campaigns yield `campaign: null`
+  (deterministic, no discount).
+
 ## Tests
 
 ```sh
 npm run test:pricing
+npm run typecheck
 ```

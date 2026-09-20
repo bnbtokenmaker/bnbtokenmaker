@@ -14,6 +14,7 @@ import type {
   PricingConfigDto,
   PricingResult,
 } from "../lib/pricing";
+import type { QuoteResponse } from "../lib/pricing/server/types";
 import {
   DEFAULT_FEAT_SELECTION,
   PRESET_IDS,
@@ -87,9 +88,10 @@ function reconstructConfig(dto: PricingConfigDto): ConfigState {
 
 type CreateBuilderProps = {
   pricingConfigDto: PricingConfigDto;
+  serverQuote: QuoteResponse;
 };
 
-export function CreateBuilder({ pricingConfigDto }: CreateBuilderProps) {
+export function CreateBuilder({ pricingConfigDto, serverQuote }: CreateBuilderProps) {
   const [name, setName] = useState("Aurora");
   const [sym, setSym] = useState("AUR");
   const [dec, setDec] = useState("18");
@@ -615,8 +617,9 @@ export function CreateBuilder({ pricingConfigDto }: CreateBuilderProps) {
               ))}
               <div className="price-total">
                 <span className="lbl">Platform fee</span>
-                <span className="val" id="pTotal">{formatWeiBnbDisplay(result.totalPlatformFeeWei)} BNB</span>
+                <span className="val" id="pTotal" data-pricing-version={serverQuote.pricingVersion} data-quote-state="estimate">{formatWeiBnbDisplay(result.totalPlatformFeeWei)} BNB</span>
               </div>
+              <p className="gas-note" id="feeNote">Estimate — the exact amount is confirmed by the server when you deploy.</p>
             </div>
           ) : (
             <div className="warn" id="pricingFault" role="alert">

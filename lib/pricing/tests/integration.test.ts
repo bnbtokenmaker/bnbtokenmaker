@@ -13,7 +13,7 @@ import {
   validateConfig,
   validateSelection,
 } from "../index";
-import { DEVELOPMENT_PRICING_CONFIG } from "../config";
+import { TEST_PRICING_CONFIG as DEVELOPMENT_PRICING_CONFIG } from "./fixtures";
 import { PAID_FEATURES } from "../features";
 import { DEFAULT_FEAT_SELECTION, PRESETS, selectedFeatureIds } from "../presets";
 

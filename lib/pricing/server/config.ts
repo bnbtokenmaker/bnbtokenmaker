@@ -1,14 +1,20 @@
-import { parseBnbToWei } from "./money";
-import type { PricingConfig } from "./types";
+import "server-only";
+
+import { parseBnbToWei } from "../money";
+import type { PricingConfig } from "../types";
 
 /*
- * DEVELOPMENT / NON-PRODUCTION PRICING CONFIG
+ * SERVER-OWNED / NON-PRODUCTION PRICING CONFIG
  *
  * These amounts are TEMPORARY development configuration that reproduces the
  * prototype's visible prices for visual/behavior parity only.
  *
  * They are NOT approved final commercial pricing. This source is designed to
  * be replaced by DB-backed server pricing in a later subphase.
+ *
+ * Because this module performs `import "server-only"`, a client component can
+ * never bundle it: importing it into client JS fails at build time. The
+ * authoritative pricing source therefore stays server-only by construction.
  */
 export const DEVELOPMENT_PRICING_CONFIG: PricingConfig = {
   version: "dev-1",

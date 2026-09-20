@@ -3,7 +3,9 @@ import "./page.css";
 import { JsonLd } from "../../components/JsonLd";
 import { CREATE_WEBSITE } from "../../lib/schema";
 import { CreateBuilder } from "../../components/CreateBuilder";
-import { DEVELOPMENT_PRICING_CONFIG } from "../../lib/pricing/config";
+import { getCurrentPricingConfig, currentPricingSource } from "../../lib/pricing/server/current-pricing-source";
+import { quotePlatformFee, toQuoteDto } from "../../lib/pricing/server/quote";
+import { PRESETS, selectedFeatureIds } from "../../lib/pricing/presets";
 import { toPricingConfigDto, validateConfig } from "../../lib/pricing";
 
 export const metadata: Metadata = {
@@ -25,13 +27,18 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  const configValidation = validateConfig(DEVELOPMENT_PRICING_CONFIG);
+  const pricingConfig = getCurrentPricingConfig();
+  const configValidation = validateConfig(pricingConfig);
   if (!configValidation.ok) {
     throw new Error(
       `Invalid development pricing config: ${configValidation.errors.map((error) => error.code).join(", ")}`
     );
   }
-  const pricingConfigDto = toPricingConfigDto(DEVELOPMENT_PRICING_CONFIG);
+  const pricingConfigDto = toPricingConfigDto(pricingConfig);
+
+  const serverQuote = toQuoteDto(
+    quotePlatformFee(currentPricingSource, selectedFeatureIds(PRESETS.standard))
+  );
 
   return (
     <>
@@ -71,7 +78,7 @@ export default function Page() {
         <span className="prog"><span className="n">04</span><span className="t">Deploy</span></span>
       </div>
 
-      <CreateBuilder pricingConfigDto={pricingConfigDto} />
+      <CreateBuilder pricingConfigDto={pricingConfigDto} serverQuote={serverQuote} />
     </div>
   </section>
 
