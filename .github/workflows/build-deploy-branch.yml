@@ -1,0 +1,116 @@
+name: build-deploy-branch
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-deploy-branch
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.23.2"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pricing tests
+        run: npm run test:pricing
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build (Next.js standalone output)
+        run: npm run build
+
+      - name: Assemble deploy artifact
+        run: |
+          set -euo pipefail
+          mkdir -p deploy
+          cp -R .next/standalone/. deploy/
+          cp -R public deploy/public
+          mkdir -p deploy/.next
+          cp -R .next/static deploy/.next/static
+          # The app does not use `next/image`. The standalone trace still pulls
+          # the optional `sharp` native codec into the artifact; removing it
+          # leaves zero native binaries so the old-glibc cPanel host can run
+          # the artifact directly (no SWC, no sharp).
+          rm -rf deploy/node_modules/sharp deploy/node_modules/@img
+          # Passenger's Node.js Selector expects an application manifest at the
+          # app root. This ship leaves room for a production package.json.
+          printf '%s\n' \
+            '{' \
+            '  "name": "bnbtokenmaker",' \
+            '  "private": true,' \
+            '  "version": "0.1.0"' \
+            '}' > deploy/package.json
+
+      - name: Verify artifact (no native binaries, static assets present)
+        run: |
+          set -euo pipefail
+          native_found="$(find deploy -name '*.node' | wc -l | tr -d ' ')"
+          if [ "$native_found" != "0" ]; then
+            echo "Native binaries found in deploy artifact:"
+            find deploy -name '*.node'
+            exit 1
+          fi
+          test -x deploy/server.js
+          static_files="$(find deploy/.next/static -type f | wc -l | tr -d ' ')"
+          [ "$static_files" -gt 0 ] || { echo "no static assets in artifact"; exit 1; }
+          grep -q '"output":"standalone"' deploy/server.js
+          echo "OK: artifact has zero native binaries and $(ls deploy/.next/static) (static_files: ${static_files})"
+
+      - name: Smoke test standalone server on Linux
+        run: |
+          set -euo pipefail
+          cd deploy
+          PORT=3911 HOSTNAME=127.0.0.1 nohup node server.js > /tmp/next.log 2>&1 &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3911/robots.txt >/dev/null 2>&1; then ready=1; break; fi
+            sleep 1
+          done
+          [ "$ready" = "1" ] || { echo "server did not start"; cat /tmp/next.log; exit 1; }
+          for path in / /create /features /blog/how-to-create-a-bep20-token /sitemap.xml /robots.txt /llms.txt; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3911$path")"
+            [ "$code" = "200" ] || { echo "FAILED $path -> $code"; exit 1; }
+            echo "200 $path"
+          done
+          missing="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3911/definitely-missing-page)"
+          [ "$missing" = "404" ] || { echo "expected 404, got $missing"; exit 1; }
+          echo "404 /definitely-missing-page"
+          echo "SMOKE OK"
+
+      - name: Push deploy branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          git init --initial-branch=deploy "$tmp" >/dev/null
+          cd "$tmp"
+          git config user.name "bnbtokenmaker CI"
+          git config user.email "ci@bnbtokenmaker.com"
+          cp -R "$GITHUB_WORKSPACE"/deploy/. .
+          git add -f -A
+          git -c commit.gpgsign=false commit -m "runtime: standalone production build $(date -u +%Y%m%d-%H%M%S)" >/dev/null
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/bnbtokenmaker/bnbtokenmaker.git"
+          git push --force origin deploy
+          echo "deploy branch updated (files: $(git ls-files | wc -l | tr -d ' '))"

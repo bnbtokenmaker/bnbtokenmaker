@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "node server.js",
+    "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:pricing": "tsx --test lib/pricing/tests/*.test.ts"
