@@ -3,6 +3,7 @@ import "./page.css";
 import { JsonLd } from "../../components/JsonLd";
 import { CREATE_WEBSITE } from "../../lib/schema";
 import { CreateBuilder } from "../../components/CreateBuilder";
+import { NetState } from "../../components/wallet/NetState";
 import { resolveDraft } from "../../lib/draft";
 import type { DraftQuery } from "../../lib/draft";
 import { getCurrentPricingConfig, currentPricingSource } from "../../lib/pricing/server/current-pricing-source";
@@ -75,7 +76,7 @@ export default async function Page({
           <span className="netbar-tag">Mainnet&nbsp;·&nbsp;Chain ID 56</span>
           <span className="netbar-sep" aria-hidden="true"></span>
           <span className="netbar-tag"><i className="fa-solid fa-shield-halved" aria-hidden="true"></i>Non-custodial</span>
-          <span className="net-state" role="status" data-netstate='disconnected'><span className="ns-txt"></span></span>
+          <NetState />
         </div>
       </header>
 

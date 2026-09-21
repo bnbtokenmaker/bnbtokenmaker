@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
+import {
+  HeaderWalletButton,
+  HeaderWalletLink,
+} from "./wallet/HeaderWallet";
 
 function BrandMark({ size }: { size: number }) {
   return (
@@ -68,17 +72,11 @@ export function Header() {
           <Link className={linkClass("/contact")} href="/contact">
             Contact
           </Link>
-          <a className="nav-wallet-link" href="#">
-            <i className="fa-solid fa-wallet" aria-hidden="true"></i>Connect
-            Wallet
-          </a>
+          <HeaderWalletLink />
         </nav>
         <div className="nav-actions">
           <ThemeToggle />
-          <button className="btn btn-primary btn-sm nav-wallet" type="button">
-            <i className="fa-solid fa-wallet" aria-hidden="true"></i>Connect
-            Wallet
-          </button>
+          <HeaderWalletButton />
           <button
             className="nav-toggle"
             id="nav-toggle"

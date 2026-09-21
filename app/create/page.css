@@ -375,6 +375,9 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .net-state[data-netstate="connected"]{color:var(--accent-t)}
 .net-state[data-netstate="connected"]::before{background:var(--accent)}
 .net-state[data-netstate="connected"] .ns-txt::after{content:"BNB Smart Chain \00b7 Mainnet \00b7 Connected"}
+.net-state[data-netstate="testnet"]{color:var(--accent-t)}
+.net-state[data-netstate="testnet"]::before{background:var(--accent)}
+.net-state[data-netstate="testnet"] .ns-txt::after{content:"BNB Smart Chain \00b7 Testnet \00b7 Connected"}
 .net-state[data-netstate="wrong"]{color:var(--danger)}
 .net-state[data-netstate="wrong"]::before{background:var(--danger)}
 .net-state[data-netstate="wrong"] .ns-txt::after{content:"Wrong Network \00b7 Switch to BNB Smart Chain"}
@@ -498,6 +501,11 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .gas-note{margin-top:.6rem;font:400 .7rem/1.45 var(--font-mono);color:var(--text-3)}
 .sum-actions{display:grid;gap:.6rem;margin-top:1.25rem}
 .sum-actions .btn{width:100%}
+.sum-netwarn{display:flex;align-items:flex-start;gap:.55rem;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);padding:.7rem .8rem;color:var(--text-2)}
+.sum-netwarn .snw-ic{color:var(--danger);font-size:.78rem;margin-top:.18em;flex:none}
+.sum-netwarn .snw-txt{display:grid;gap:.22rem}
+.sum-netwarn b{font:600 .78rem/1.25 var(--font-body);color:var(--text)}
+.sum-netwarn span{font:400 .7rem/1.45 var(--font-mono);color:var(--text-2)}
 .sum-note{font:400 .76rem/1.4 var(--font-mono);color:var(--text-3);text-align:center}
 
 .js .reveal:not(.is-in){opacity:0;transform:translateY(16px)}

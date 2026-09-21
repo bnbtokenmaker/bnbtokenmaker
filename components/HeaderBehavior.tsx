@@ -31,7 +31,10 @@ export function HeaderBehavior() {
         setMenu(!links.classList.contains("is-open"))
       );
       links.addEventListener("click", (e) => {
-        if ((e.target as Element).closest("a") && links.classList.contains("is-open")) {
+        const target = e.target as Element;
+        const isAction =
+          target.closest("a") || target.closest(".nav-wallet-link");
+        if (isAction && links.classList.contains("is-open")) {
           setMenu(false);
         }
       });

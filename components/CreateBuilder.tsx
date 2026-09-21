@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useConnection, useSwitchChain } from "wagmi";
 
+import { BNB_MAINNET_CHAIN_ID, networkLabel } from "../lib/wallet/chains";
+import { describeWalletError } from "../lib/wallet/errors";
+import { shortenAddress } from "../lib/wallet/format";
+import { walletDeploymentEligibility } from "../lib/wallet/network";
+import { useWalletUI } from "./wallet/WalletUI";
+import { useWalletNetwork } from "./wallet/useWalletNetwork";
 import {
   calculatePlatformFee,
   formatWeiBnbDisplay,
@@ -110,6 +117,30 @@ export function CreateBuilder({
   const [xMaxbuy, setXMaxbuy] = useState("1");
   const [xMaxwal, setXMaxwal] = useState("2");
   const [inv, setInv] = useState<Inv>(CLEAR_INV);
+
+  const {
+    isConnected: walletConnected,
+    address: walletAddress,
+    connector: walletConnector,
+  } = useConnection();
+  const network = useWalletNetwork();
+  const { open: openWallet } = useWalletUI();
+  const {
+    mutate: switchChain,
+    isPending: isSwitchingChain,
+    error: switchChainError,
+    reset: resetSwitchChain,
+  } = useSwitchChain();
+  const walletChainId = network.chainId;
+  const needsNetworkSwitch = network.status === "wrong";
+  // Authoritative, reusable deployment gate for Phase 6B. Deployment is NOT
+  // enabled yet; the live chain is re-checked via `revalidateActiveChain`
+  // immediately before any future transaction.
+  const deploymentEligibility = walletDeploymentEligibility({
+    isConnected: walletConnected,
+    address: walletAddress,
+    chainId: walletChainId,
+  });
 
   const decNum = parseInt(dec, 10);
   const decValid = dec !== "" && !isNaN(decNum) && decNum >= 0 && decNum <= 18;
@@ -650,13 +681,75 @@ export function CreateBuilder({
           )}
           <p className="gas-note">Network gas is paid to BNB Smart Chain separately and shown just before you sign.</p>
           <div className="sum-actions">
-            <button className="btn btn-primary" type="button" id="walletBtn">
-              <i className="fa-solid fa-wallet" aria-hidden="true"></i>Connect Wallet
-            </button>
-            <button className="btn btn-dark" type="button" id="createBtn" disabled>
+            {needsNetworkSwitch ? (
+              <div className="sum-netwarn" id="sumNetWarn" role="status">
+                <span className="snw-ic" aria-hidden="true"><i className="fa-solid fa-triangle-exclamation"></i></span>
+                <span className="snw-txt">
+                  <b>Wrong network</b>
+                  <span>Your wallet is connected to an unsupported network. Switch to BNB Smart Chain to continue.</span>
+                </span>
+              </div>
+            ) : null}
+            {!walletConnected ? (
+              <button
+                className="btn btn-primary"
+                type="button"
+                id="walletBtn"
+                onClick={() => openWallet("connect")}
+              >
+                <i className="fa-solid fa-wallet" aria-hidden="true"></i>Connect Wallet
+              </button>
+            ) : needsNetworkSwitch ? (
+              <button
+                className="btn btn-primary"
+                type="button"
+                id="walletBtn"
+                disabled={isSwitchingChain}
+                onClick={() => {
+                  resetSwitchChain();
+                  switchChain({ chainId: BNB_MAINNET_CHAIN_ID });
+                }}
+              >
+                <i className="fa-solid fa-arrow-right-arrow-left" aria-hidden="true"></i>
+                {isSwitchingChain ? "Switching\u2026" : "Switch to BNB Smart Chain"}
+              </button>
+            ) : (
+              <button
+                className="btn btn-ghost sum-wallet"
+                type="button"
+                id="walletBtn"
+                onClick={() => openWallet("account")}
+              >
+                <span className="wal-dot" aria-hidden="true"></span>
+                <span className="sum-wallet-name">
+                  {walletConnector?.name ?? "Wallet"}
+                </span>
+                <span className="sum-wallet-addr">
+                  {shortenAddress(walletAddress)}
+                </span>
+              </button>
+            )}
+            <button
+              className="btn btn-dark"
+              type="button"
+              id="createBtn"
+              disabled
+              data-deploy-eligible={deploymentEligibility.eligible ? "true" : "false"}
+            >
               Create Token
             </button>
-            <p className="sum-note">Connect your wallet to continue.</p>
+            <p className="sum-note">
+              {!walletConnected
+                ? "Connect your wallet to continue."
+                : needsNetworkSwitch
+                  ? `Wrong Network \u00b7 You are on ${networkLabel(walletChainId)}. Switch to BNB Smart Chain to continue.`
+                  : "Wallet connected. Token deployment is not enabled yet."}
+            </p>
+            {needsNetworkSwitch && switchChainError ? (
+              <p className="sum-note is-err" role="alert">
+                {describeWalletError(switchChainError)}
+              </p>
+            ) : null}
           </div>
         </div>
       </aside>

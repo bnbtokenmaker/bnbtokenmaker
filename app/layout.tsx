@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./wallet.css";
 import { Manrope, Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import Script from "next/script";
 import { Header } from "../components/Header";
@@ -7,6 +8,7 @@ import { Footer } from "../components/Footer";
 import { HeaderBehavior } from "../components/HeaderBehavior";
 import { ScrollReset } from "../components/ScrollReset";
 import { RouteTransition } from "../components/RouteTransition";
+import { WalletProvider } from "../components/wallet/WalletProvider";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -60,6 +62,7 @@ export default function RootLayout({
       lang="en"
       data-scroll-behavior="smooth"
       className={`${manrope.variable} ${spaceGrotesk.variable} ${ibmPlexMono.variable}`}
+      suppressHydrationWarning
     >
       <head>
         <link
@@ -72,14 +75,16 @@ export default function RootLayout({
         <Script id="theme-init" strategy="beforeInteractive">
           {themeInit}
         </Script>
-        <a className="skip" href="#main">
-          Skip to content
-        </a>
-        <Header />
-        <RouteTransition>{children}</RouteTransition>
-        <Footer />
-        <HeaderBehavior />
-        <ScrollReset />
+        <WalletProvider>
+          <a className="skip" href="#main">
+            Skip to content
+          </a>
+          <Header />
+          <RouteTransition>{children}</RouteTransition>
+          <Footer />
+          <HeaderBehavior />
+          <ScrollReset />
+        </WalletProvider>
       </body>
     </html>
   );
