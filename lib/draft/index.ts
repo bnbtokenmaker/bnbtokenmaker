@@ -11,6 +11,28 @@ export const DECIMALS_MIN = 0;
 export const DECIMALS_MAX = 18;
 export const SUPPLY_MIN = 1;
 export const SUPPLY_MAX = Number.MAX_SAFE_INTEGER;
+export const SUPPLY_DIGITS_MAX = 15;
+
+export const SUPPLY_QUICK_PRESETS: ReadonlyArray<{ label: string; digits: string }> = [
+  { label: "1M", digits: "1000000" },
+  { label: "10M", digits: "10000000" },
+  { label: "100M", digits: "100000000" },
+  { label: "1B", digits: "1000000000" },
+  { label: "10B", digits: "10000000000" },
+];
+
+export function formatDigitsWithCommas(digits: string): string {
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+export function formatSupplyInput(raw: string): string {
+  let digits = raw.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+  if (digits.length > SUPPLY_DIGITS_MAX) {
+    digits = digits.slice(0, SUPPLY_DIGITS_MAX);
+  }
+  if (digits === "") return "";
+  return formatDigitsWithCommas(digits);
+}
 
 export const DRAFT_DEFAULTS: DraftConfig = {
   name: "Maker",

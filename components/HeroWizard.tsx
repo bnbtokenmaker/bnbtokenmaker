@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   DRAFT_DEFAULTS,
@@ -10,6 +10,7 @@ import {
   formatSupplyDisplay,
   draftToQuery,
 } from "../lib/draft";
+import { useSupplyField } from "./useSupplyField";
 
 function clampDecimals(raw: string): string {
   if (raw === "") return DRAFT_DEFAULTS.decimals;
@@ -22,13 +23,11 @@ export function HeroWizard() {
   const [symbol, setSymbol] = useState<string>(DRAFT_DEFAULTS.symbol);
   const [decimals, setDecimals] = useState<string>(DRAFT_DEFAULTS.decimals);
   const [supply, setSupply] = useState<string>(DRAFT_DEFAULTS.supply);
+  const supplyRef = useRef<HTMLInputElement | null>(null);
+  const supplyField = useSupplyField({ value: supply, setValue: setSupply, inputRef: supplyRef });
 
   function updateSymbol(next: string) {
     setSymbol(next.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 11));
-  }
-
-  function updateSupply(next: string) {
-    setSupply(next);
   }
 
   function commitSupply() {
@@ -103,9 +102,10 @@ export function HeroWizard() {
             id="f-supply"
             type="text"
             value={supply}
+            ref={supplyRef}
             inputMode="numeric"
             autoComplete="off"
-            onChange={(e) => updateSupply(e.target.value)}
+            onChange={(e) => supplyField.handleChange(e.target.value)}
             onBlur={commitSupply}
           />
         </label>

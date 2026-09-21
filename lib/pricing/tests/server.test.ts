@@ -20,7 +20,7 @@ describe("quote service — MODULE under test: lib/pricing/server/quote.ts", () 
       assert.ok(parsed.ok);
       if (parsed.ok) {
         assert.equal(parsed.preset, "standard");
-        assert.deepEqual([...parsed.selection], ["burn"]);
+        assert.deepEqual([...parsed.selection], []);
       }
     });
 
@@ -232,7 +232,7 @@ describe("quote service — MODULE under test: lib/pricing/server/quote.ts", () 
       assert.equal(a.totalPlatformFeeWei, parseBnbToWei("0.065"));
     });
 
-    it("standard preset base quote is 0.055 BNB", () => {
+    it("burn add-on quote through the service is 0.055 BNB", () => {
       assert.equal(
         quotePlatformFee(source, ["burn"], NOW).totalPlatformFeeWei,
         parseBnbToWei("0.055")

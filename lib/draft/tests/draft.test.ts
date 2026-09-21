@@ -3,10 +3,14 @@ import { describe, it } from "node:test";
 
 import {
   DRAFT_DEFAULTS,
+  SUPPLY_DIGITS_MAX,
+  SUPPLY_QUICK_PRESETS,
   draftToCreatePath,
   formatDecimals,
+  formatDigitsWithCommas,
   formatSupplyDigits,
   formatSupplyDisplay,
+  formatSupplyInput,
   resolveDraft,
   sanitizeDecimals,
   sanitizeName,
@@ -164,5 +168,66 @@ describe("lib/draft — create path building", () => {
       supply: draft.supply,
     });
     assert.deepEqual(again, draft);
+  });
+});
+
+describe("lib/draft — supply input formatting", () => {
+  it("keeps commas readable while typing", () => {
+    assert.equal(formatSupplyInput("1000000"), "1,000,000");
+    assert.equal(formatSupplyInput("1,000,000"), "1,000,000");
+    assert.equal(formatSupplyInput("12345678901234567890"), "123,456,789,012,345");
+    assert.equal(formatSupplyInput("999999999999999"), "999,999,999,999,999");
+  });
+
+  it("strips anything that is not a digit", () => {
+    assert.equal(formatSupplyInput("1,000 abc"), "1,000");
+    assert.equal(formatSupplyInput("12.5"), "125");
+    assert.equal(formatSupplyInput("abc"), "");
+  });
+
+  it("handles leading zeros without collapsing a single zero", () => {
+    assert.equal(formatSupplyInput("0"), "0");
+    assert.equal(formatSupplyInput("000"), "0");
+    assert.equal(formatSupplyInput("007"), "7");
+    assert.equal(formatSupplyInput(""), "");
+  });
+
+  it("caps the number of digits at the safe layer bound", () => {
+    const cappedDigits = formatSupplyInput("9".repeat(SUPPLY_DIGITS_MAX + 4));
+    const digits = cappedDigits.replace(/\D/g, "");
+    assert.equal(digits.length, SUPPLY_DIGITS_MAX);
+    assert.equal(formatDigitsWithCommas("9".repeat(SUPPLY_DIGITS_MAX)), cappedDigits);
+    assert.equal(
+      Number(cappedDigits.replace(/\D/g, "")),
+      999_999_999_999_999,
+    );
+    assert.equal(Number(cappedDigits.replace(/\D/g, "")) <= Number.MAX_SAFE_INTEGER, true);
+  });
+
+  it("groups digits into comma-separated thousands", () => {
+    assert.equal(formatDigitsWithCommas("1"), "1");
+    assert.equal(formatDigitsWithCommas("12"), "12");
+    assert.equal(formatDigitsWithCommas("123"), "123");
+    assert.equal(formatDigitsWithCommas("1234"), "1,234");
+    assert.equal(formatDigitsWithCommas("1234567"), "1,234,567");
+  });
+
+  it("quick supply presets are safe and formatted readably", () => {
+    assert.deepEqual(SUPPLY_QUICK_PRESETS.map((p) => p.label), [
+      "1M",
+      "10M",
+      "100M",
+      "1B",
+      "10B",
+    ]);
+    for (const preset of SUPPLY_QUICK_PRESETS) {
+      assert.equal(preset.digits.length <= SUPPLY_DIGITS_MAX, true);
+      assert.equal(Number(preset.digits) <= Number.MAX_SAFE_INTEGER, true);
+    }
+    assert.equal(formatSupplyInput("1000000"), "1,000,000");
+    assert.equal(formatSupplyInput("10000000"), "10,000,000");
+    assert.equal(formatSupplyInput("100000000"), "100,000,000");
+    assert.equal(formatSupplyInput("1000000000"), "1,000,000,000");
+    assert.equal(formatSupplyInput("10000000000"), "10,000,000,000");
   });
 });

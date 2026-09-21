@@ -50,23 +50,23 @@ describe("builder pricing adapter integration — NON-PRODUCTION TEST FIXTURES",
 
   it("STANDARD preset result", () => {
     const ids = selectedFeatureIds(PRESETS.standard);
-    assert.deepEqual([...ids], ["burn"]);
+    assert.deepEqual([...ids], []);
     const result = calculatePlatformFee(DEVELOPMENT_PRICING_CONFIG, ids);
-    assert.equal(result.totalPlatformFeeWei, parseBnbToWei("0.055"));
+    assert.equal(result.totalPlatformFeeWei, parseBnbToWei("0.050"));
   });
 
   it("MINTABLE preset result", () => {
     const ids = selectedFeatureIds(PRESETS.mintable);
-    assert.deepEqual([...ids], ["burn", "mint"]);
+    assert.deepEqual([...ids], ["mint"]);
     const result = calculatePlatformFee(DEVELOPMENT_PRICING_CONFIG, ids);
-    assert.equal(result.totalPlatformFeeWei, parseBnbToWei("0.065"));
+    assert.equal(result.totalPlatformFeeWei, parseBnbToWei("0.060"));
   });
 
   it("COMMUNITY preset result", () => {
     const ids = selectedFeatureIds(PRESETS.community);
-    assert.deepEqual([...ids], ["burn", "maxTx", "maxWallet"]);
+    assert.deepEqual([...ids], ["maxTx", "maxWallet"]);
     const result = calculatePlatformFee(DEVELOPMENT_PRICING_CONFIG, ids);
-    assert.equal(result.totalPlatformFeeWei, parseBnbToWei("0.075"));
+    assert.equal(result.totalPlatformFeeWei, parseBnbToWei("0.070"));
   });
 
   it("CUSTOM preset base-only result", () => {
@@ -78,6 +78,11 @@ describe("builder pricing adapter integration — NON-PRODUCTION TEST FIXTURES",
 
   it("default selection equals the STANDARD preset", () => {
     assert.deepEqual(DEFAULT_FEAT_SELECTION, PRESETS.standard);
+  });
+
+  it("no paid features are selected by default", () => {
+    assert.deepEqual([...selectedFeatureIds(DEFAULT_FEAT_SELECTION)], []);
+    assert.equal(DEFAULT_FEAT_SELECTION.burn, false);
   });
 
   it("blacklist + whitelist rejected by domain validation", () => {
@@ -139,7 +144,7 @@ describe("builder pricing adapter integration — NON-PRODUCTION TEST FIXTURES",
     const resultDto = toPlatformFeeDto(result);
     const roundTripped = JSON.parse(JSON.stringify(resultDto)) as ReturnType<typeof toPlatformFeeDto>;
     assert.equal(roundTripped.totalPlatformFeeWei, result.totalPlatformFeeWei.toString());
-    assert.equal(roundTripped.totalPlatformFeeWei, parseBnbToWei("0.065").toString());
+    assert.equal(roundTripped.totalPlatformFeeWei, parseBnbToWei("0.060").toString());
   });
 
   it("display formatting uses no floating point (wei -> string only)", () => {
@@ -155,7 +160,7 @@ describe("builder pricing adapter integration — NON-PRODUCTION TEST FIXTURES",
     const a = calculatePlatformFee(DEVELOPMENT_PRICING_CONFIG, selection);
     const b = calculatePlatformFee(DEVELOPMENT_PRICING_CONFIG, selection);
     assert.equal(a.totalPlatformFeeWei, b.totalPlatformFeeWei);
-    assert.equal(a.totalPlatformFeeWei, parseBnbToWei("0.075"));
+    assert.equal(a.totalPlatformFeeWei, parseBnbToWei("0.070"));
   });
 
   it("no preset embeds a hard-coded total", () => {

@@ -560,3 +560,37 @@ body.menu-open{overflow:hidden}
 @media (max-width:1160px){
   .nav-links .nav-cta{width:calc(100% - 1rem);justify-content:center;margin:.4rem .5rem .25rem;border-bottom:0!important}
 }
+
+/* ===== CONTENT CONSISTENCY: one centered reading column ===== */
+:root{--content-narrow:56rem}
+.page-head{max-width:840px;margin-inline:auto;text-align:center}
+.page-head .kicker{justify-content:center}
+.page-head h1{margin-inline:auto}
+.page-head .lede{margin-inline:auto}
+.idbar{margin-inline:auto}
+.post-head{max-width:820px;margin-inline:auto}
+.feat-page-body{max-width:var(--content-narrow);margin-inline:auto}
+.steps-wrap{max-width:var(--content-narrow);margin-inline:auto}
+.faq-list,.faq-root,.no-results{max-width:940px;margin-inline:auto}
+
+/* ===== ROUTE TRANSITION ===== */
+main#main.route-enter{animation:route-enter 160ms ease-out}
+@keyframes route-enter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){main#main.route-enter{animation:none}}
+
+/* ===== CONTENT CONSISTENCY: one centered reading column ===== */
+:root{--content-narrow:56rem}
+.page-head{max-width:840px;margin-inline:auto;text-align:center}
+.page-head .kicker{justify-content:center}
+.page-head h1{margin-inline:auto}
+.page-head .lede{margin-inline:auto}
+.idbar{margin-inline:auto}
+.post-head{max-width:820px;margin-inline:auto}
+.feat-page-body{max-width:var(--content-narrow);margin-inline:auto}
+.steps-wrap{max-width:var(--content-narrow);margin-inline:auto}
+.faq-list,.faq-root,.no-results{max-width:940px;margin-inline:auto}
+
+/* ===== ROUTE TRANSITION ===== */
+main#main.route-enter{animation:route-enter 160ms ease-out}
+@keyframes route-enter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){main#main.route-enter{animation:none}}

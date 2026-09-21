@@ -5,6 +5,7 @@ import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
 import { HeaderBehavior } from "../components/HeaderBehavior";
 import { ScrollReset } from "../components/ScrollReset";
+import { RouteTransition } from "../components/RouteTransition";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -73,7 +74,7 @@ export default function RootLayout({
           Skip to content
         </a>
         <Header />
-        <main id="main">{children}</main>
+        <RouteTransition>{children}</RouteTransition>
         <Footer />
         <HeaderBehavior />
         <ScrollReset />

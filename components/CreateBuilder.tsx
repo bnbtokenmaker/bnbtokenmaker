@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   calculatePlatformFee,
@@ -23,8 +23,9 @@ import {
   selectedFeatureIds,
 } from "../lib/pricing/presets";
 import type { FeatureSelection, PresetId } from "../lib/pricing/presets";
-import { DRAFT_DEFAULTS } from "../lib/draft";
+import { DRAFT_DEFAULTS, SUPPLY_QUICK_PRESETS, formatSupplyInput } from "../lib/draft";
 import type { DraftConfig } from "../lib/draft";
+import { useSupplyField } from "./useSupplyField";
 
 const SUMMARY_LABEL: Record<PaidFeatureId, string> = {
   burn: "Burnable",
@@ -103,6 +104,8 @@ export function CreateBuilder({
   const [sym, setSym] = useState(() => initialDraft.symbol);
   const [dec, setDec] = useState(() => initialDraft.decimals);
   const [supply, setSupply] = useState(() => initialDraft.supply);
+  const supplyRef = useRef<HTMLInputElement | null>(null);
+  const supplyField = useSupplyField({ value: supply, setValue: setSupply, inputRef: supplyRef });
   const [feats, setFeats] = useState<FeatureSelection>(DEFAULT_FEAT_SELECTION);
   const [xMaxbuy, setXMaxbuy] = useState("1");
   const [xMaxwal, setXMaxwal] = useState("2");
@@ -261,12 +264,11 @@ export function CreateBuilder({
               id="f-supply"
               type="text"
               value={supply}
+              ref={supplyRef}
               inputMode="numeric"
               autoComplete="off"
-              onChange={(e) => setSupply(e.target.value)}
+              onChange={(e) => supplyField.handleChange(e.target.value)}
               onBlur={() => {
-                const f = fmtNumber(supply);
-                setSupply(f || "0");
                 const sn = parseInt((supply || "").replace(/\D/g, ""), 10);
                 setInv((cur) => ({ ...cur, supply: !(sn > 0) }));
               }}
@@ -274,6 +276,22 @@ export function CreateBuilder({
             <span className="field-hint">Initial number of tokens created at deployment.</span>
             <span className="err">Total supply must be greater than zero.</span>
           </label>
+          <div className="supply-presets" role="group" aria-label="Quick supply presets">
+            {SUPPLY_QUICK_PRESETS.map((p) => (
+              <button
+                key={p.label}
+                type="button"
+                className="supply-preset"
+                data-supply={p.label}
+                onClick={() => {
+                  setSupply(formatSupplyInput(p.digits));
+                  setInv((cur) => ({ ...cur, supply: false }));
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="form-box">
@@ -298,15 +316,15 @@ export function CreateBuilder({
                   <i className="fa-solid fa-check" aria-hidden="true"></i>
                 </span>
                 <span className="p-tags">
-                  {p === "standard" && (<><span>Fixed supply</span><span>Burnable</span><span>Ownership control</span></>)}
-                  {p === "mintable" && (<><span>Mintable</span><span>Burnable</span><span>Ownership control</span></>)}
-                  {p === "community" && (<><span>Burnable</span><span>Max transaction</span><span>Max wallet</span></>)}
+                  {p === "standard" && (<><span>Fixed supply</span><span>Ownership control</span></>)}
+                  {p === "mintable" && (<><span>Mintable</span><span>Ownership control</span></>)}
+                  {p === "community" && (<><span>Max transaction</span><span>Max wallet</span><span>Ownership control</span></>)}
                   {p === "custom" && (<><span>Base BEP-20</span><span>You decide</span></>)}
                 </span>
                 <span className="p-desc">
-                  {p === "standard" && "A clean transferable token with burn and ownership control."}
+                  {p === "standard" && "A clean transferable token with fixed supply and ownership control."}
                   {p === "mintable" && "Mint extra supply later when growth calls for it."}
-                  {p === "community" && "Burnable, with per-transaction and per-wallet limits for tighter control."}
+                  {p === "community" && "Per-transaction and per-wallet limits for tighter control."}
                   {p === "custom" && "Start from the base contract and switch every feature manually."}
                 </span>
               </button>
