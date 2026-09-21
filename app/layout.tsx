@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import "./globals.css";
 import { Manrope, Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import Script from "next/script";
 import { Header } from "../components/Header";
@@ -57,6 +58,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      data-scroll-behavior="smooth"
       className={`${manrope.variable} ${spaceGrotesk.variable} ${ibmPlexMono.variable}`}
     >
       <head>

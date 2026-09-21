@@ -303,16 +303,16 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .faq-list{border-top:1px solid var(--line)}
 .faq-item{border-bottom:1px solid var(--line)}
 .faq-item summary{
-  list-style:none;display:flex;align-items:center;justify-content:space-between;gap:1.25rem;
+  list-style:none;display:flex;align-items:center;justify-content:flex-start;gap:1.25rem;
   padding:1.15rem .25rem;cursor:pointer;font:600 1.02rem/1.35 var(--font-body);color:var(--text);
   transition:color .15s ease;
 }
 .faq-item summary::-webkit-details-marker{display:none}
 .faq-item summary:hover{color:var(--accent-t)}
-.faq-item .plus{flex:none;width:22px;height:22px;border:1px solid var(--line-strong);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-2);transition:transform .2s ease,background-color .15s ease,border-color .15s ease}
+.faq-item summary .plus{order:-1;flex:none;width:22px;height:22px;border:1px solid var(--line-strong);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-2);transition:transform .2s ease,background-color .15s ease,border-color .15s ease}
 .faq-item .plus i{font-size:.6rem}
 .faq-item[open] .plus{transform:rotate(45deg);background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.faq-item .a{padding:0 .25rem 1.3rem;color:var(--text-2);font-size:.94rem;max-width:64ch}
+.faq-item .a{padding:0 .25rem 1.3rem;margin-left:calc(22px + 1.25rem);color:var(--text-2);font-size:.94rem;max-width:64ch}
 .faq-more{margin-top:1.9rem}
 .faq-more a{display:inline-flex;align-items:center;gap:.5rem;font:600 .9rem/1 var(--font-body);color:var(--text-2);transition:color .15s ease}
 .faq-more a:hover{color:var(--accent-t)}
@@ -373,11 +373,12 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .faq-item{display:grid;gap:.6rem}
 .faq-item details{border:1px solid var(--line);border-radius:12px;background:var(--bg-soft);transition:border-color .18s ease,box-shadow .18s ease}
 .faq-item details[open]{border-color:var(--line-strong);background:var(--bg-raised);box-shadow:0 6px 20px rgba(10,8,4,.06)}
-.faq-item summary{list-style:none;cursor:pointer;display:flex;flex-direction:row-reverse;justify-content:space-between;align-items:center;gap:.9rem;padding:1rem 1.1rem 1rem 1.3rem;font-weight:600;font-size:.98rem;color:var(--text)}
+.faq-item summary{list-style:none;cursor:pointer;display:flex;flex-direction:row-reverse;justify-content:flex-start;align-items:flex-start;gap:.9rem;padding:1rem 1.1rem 1rem 1.3rem;font-weight:600;font-size:.98rem;color:var(--text)}
 .faq-item summary::-webkit-details-marker{display:none}
-.faq-item summary i{flex:none;color:var(--accent-t);font-size:.85rem;transition:transform .2s ease}
+.faq-item summary i{flex:none;color:var(--accent-t);font-size:.85rem;transition:transform .2s ease;margin-top:.22rem}
+.faq-item summary span{flex:1 1 auto;min-width:0}
 .faq-item details[open] summary i{transform:rotate(180deg)}
-.faq-a{padding:.1rem 1.3rem 1.05rem;border-top:1px dashed var(--line);margin-top:.35rem}
+.faq-a{padding:.1rem 1.3rem 1.05rem calc(1.3rem + .85rem + .9rem);border-top:1px dashed var(--line);margin-top:.35rem}
 .faq-a p{font-size:.93rem;color:var(--text-2);line-height:1.7;max-width:70ch;margin-top:.95rem}
 .faq-a p b{color:var(--text);font-weight:600}
 .faq-item.is-hidden{display:none}
@@ -390,7 +391,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 [data-theme="dark"] .faq-item details[open]{box-shadow:0 8px 24px rgba(0,0,0,.35)}
 @media (max-width:640px){
   .faq-item summary{font-size:.93rem;padding:.9rem 1rem .9rem 1.1rem}
-  .faq-a{padding:.1rem 1.1rem 1rem}
+  .faq-a{padding:.1rem 1.1rem 1rem calc(1.1rem + .85rem + .9rem)}
 }
 /* ===== content page shared ===== */
 .page{position:relative;padding:clamp(2.6rem,5vw,4rem) 0 clamp(1rem,3vw,2rem)}

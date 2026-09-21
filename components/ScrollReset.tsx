@@ -10,11 +10,23 @@ export function ScrollReset() {
   const prevPathname = useRef(pathname);
 
   useEffect(() => {
+    const root = document.documentElement;
+    let restoreTimer: number | undefined;
     const onPopstate = () => {
       lastPopstateAt = Date.now();
+      // Native history scroll restoration respects `scroll-behavior: smooth`,
+      // which animates back/forward jumps. Disable it just for the restore.
+      root.style.scrollBehavior = "auto";
+      window.clearTimeout(restoreTimer);
+      restoreTimer = window.setTimeout(() => {
+        root.style.scrollBehavior = "";
+      }, 350);
     };
     window.addEventListener("popstate", onPopstate);
-    return () => window.removeEventListener("popstate", onPopstate);
+    return () => {
+      window.removeEventListener("popstate", onPopstate);
+      window.clearTimeout(restoreTimer);
+    };
   }, []);
 
   useEffect(() => {

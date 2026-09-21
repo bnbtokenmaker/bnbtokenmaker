@@ -1,0 +1,78 @@
+/* ===== SHARED INTERACTION & MOTION LAYER =====
+   Loaded via app/layout.tsx before each route's page.css.
+   Complements (never replaces) page-level styles; selectors that need to
+   win over a page.css rule are written with higher specificity.
+   All animation is CSS-only, subtle, and disabled under reduced motion. */
+
+:root{
+  --t-fast:150ms;
+  --t:180ms;
+  --t-slow:240ms;
+  --ease:cubic-bezier(.25,.7,.3,1);
+  --lift-y:-2px;
+  --card-lift-shadow:0 16px 34px -24px rgba(11,9,5,.5);
+}
+
+/* Cards / tiles: one quiet lift + border/shadow language across the site */
+.why-item,
+.trust-item,
+.hp-blog{
+  transition:background-color var(--t-fast) ease,border-color var(--t-fast) ease,transform var(--t) var(--ease),box-shadow var(--t) var(--ease);
+}
+
+/* Editorial arrow links: shift right on hover/focus for a clear affordance */
+.go i,
+.rd-cta i,
+.security-link i,
+.faq-more i{transition:transform .18s ease}
+.go:hover i,
+.go:focus-visible i,
+.rd-card:hover .rd-cta i,
+.security-link:hover i,
+.faq-more a:hover i{transform:translateX(3px)}
+
+/* Primary in-section CTAs become real buttons (Homepage #how / #features /
+   #docs / #blog / #faq sections). Secondary links stay text-with-arrow. */
+.sec-cta .sec-cta-main{
+  display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
+  padding:.72rem 1.3rem;border-radius:10px;white-space:nowrap;flex:none;
+  border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);
+  font:700 .9rem/1 var(--font-body);
+  box-shadow:0 1px 0 rgba(23,18,8,.14),0 12px 26px -16px rgba(23,18,8,.4);
+  transition:background-color var(--t-fast) ease,border-color var(--t-fast) ease,color var(--t-fast) ease,transform var(--t) var(--ease),box-shadow var(--t) var(--ease);
+}
+.sec-cta .sec-cta-main i{font-size:.72rem;transition:transform .18s ease}
+.sec-cta .sec-cta-main:focus-visible{outline-offset:3px}
+
+/* Waiter / switch feedback for disabled buttons on every route */
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+
+/* Brand mark: gentle lift + gold glow on hover (header only) */
+.site-header .brand{transition:transform var(--t) var(--ease)}
+.site-header .brand .mark{transition:transform var(--t) var(--ease),color var(--t) var(--ease),filter var(--t) var(--ease)}
+.site-header .brand:focus-visible{outline-offset:4px;border-radius:10px}
+
+/* Hero BNB emblem: slow idle float — scoped so kicker/wordmark never move */
+.hero .h1-net{animation:btm-hero-float 4.5s ease-in-out infinite}
+@keyframes btm-hero-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+
+@media (hover:hover) and (prefers-reduced-motion:no-preference){
+  .hp-blog:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--card-lift-shadow)}
+  .why-item:hover{background:var(--bg-raised);transform:translateY(-1px)}
+  .trust-item:hover{background:var(--bg-raised);transform:translateY(-1px)}
+  .sec-cta .sec-cta-main:hover{background:var(--accent-hover);border-color:var(--accent-hover);transform:translateY(-1px)}
+  .sec-cta .sec-cta-main:hover i{transform:translateX(3px)}
+  .sec-cta .sec-cta-main:active{transform:translateY(0)}
+  .site-header .brand:hover{transform:translateY(-1px)}
+}
+
+@media (hover:hover){
+  .site-header .brand:hover .mark{color:var(--accent);filter:drop-shadow(0 3px 5px rgba(243,186,47,.38))}
+  .site-header .brand:hover .brand-m{color:var(--text)}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .why-item,.trust-item,.hp-blog,.sec-cta .sec-cta-main,.site-header .brand{transition:none}
+  .hero .h1-net{animation:none}
+  .hp-blog:hover,.why-item:hover,.trust-item:hover,.sec-cta .sec-cta-main:hover{transform:none}
+}
