@@ -3,6 +3,8 @@ import "./page.css";
 import { JsonLd } from "../../components/JsonLd";
 import { CREATE_WEBSITE } from "../../lib/schema";
 import { CreateBuilder } from "../../components/CreateBuilder";
+import { resolveDraft } from "../../lib/draft";
+import type { DraftQuery } from "../../lib/draft";
 import { getCurrentPricingConfig, currentPricingSource } from "../../lib/pricing/server/current-pricing-source";
 import { quotePlatformFee, toQuoteDto } from "../../lib/pricing/server/quote";
 import { PRESETS, selectedFeatureIds } from "../../lib/pricing/presets";
@@ -26,7 +28,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<DraftQuery>;
+}) {
+  const requested = await searchParams;
+  const initialDraft = resolveDraft(requested);
   const pricingConfig = getCurrentPricingConfig();
   const configValidation = validateConfig(pricingConfig);
   if (!configValidation.ok) {
@@ -78,7 +86,11 @@ export default function Page() {
         <span className="prog"><span className="n">04</span><span className="t">Deploy</span></span>
       </div>
 
-      <CreateBuilder pricingConfigDto={pricingConfigDto} serverQuote={serverQuote} />
+      <CreateBuilder
+        pricingConfigDto={pricingConfigDto}
+        serverQuote={serverQuote}
+        initialDraft={initialDraft}
+      />
     </div>
   </section>
 

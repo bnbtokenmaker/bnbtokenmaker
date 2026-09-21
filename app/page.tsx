@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./home.css";
 import { JsonLd } from "../components/JsonLd";
+import { HeroWizard } from "../components/HeroWizard";
 import {
   INDEX_WEBSITE,
   INDEX_ORGANIZATION,
@@ -73,51 +74,7 @@ export default function Page() {
         <p className="hero-indep">BNB Token Maker is an independent tool for creating BEP-20 tokens on BNB Smart Chain and is not affiliated with BNB Chain or Binance.</p>
       </div>
 
-      <aside className="deck reveal is-in" aria-label="Token configuration preview">
-        <div className="deck-head">
-          <span className="lbl"><span className="pulse"></span>New token</span>
-          <span className="net"><img className="net-ico" src="/logo-bnb-chain.svg" alt="" width="14" height="14" />BNB Smart Chain</span>
-        </div>
-        <div className="deck-body">
-          <label className="field">
-            <span className="field-label">Token name</span>
-            <input id="f-name" type="text" value="Aurora" maxLength={40} spellCheck="false" autoComplete="off" />
-          </label>
-          <div className="field-row">
-            <label className="field">
-              <span className="field-label">Symbol</span>
-              <input id="f-symbol" type="text" value="AUR" maxLength={11} spellCheck="false" autoComplete="off" />
-            </label>
-            <label className="field">
-              <span className="field-label">Decimals</span>
-              <input id="f-dec" type="number" value="18" min={0} max={18} inputMode="numeric" />
-              <span className="field-hint">Standard&nbsp;·&nbsp;max&nbsp;18</span>
-            </label>
-          </div>
-          <label className="field">
-            <span className="field-label">Total supply</span>
-            <input id="f-supply" type="text" value="1,000,000,000" inputMode="numeric" autoComplete="off" />
-          </label>
-          <div className="preview" aria-live="polite">
-            <span className="p-lbl">Draft</span>
-            <span className="p-val" id="pv">Aurora&nbsp;·&nbsp;AUR&nbsp;·&nbsp;1,000,000,000&nbsp;·&nbsp;18&nbsp;dec.</span>
-          </div>
-        </div>
-        <div className="deck-foot">
-          <div className="estimate">
-            <span className="est">≈ 2 min</span>
-            <span className="est-txt">estimated deployment&nbsp;·&nbsp;network fees paid in BNB</span>
-          </div>
-          <a className="btn btn-primary" href="/create" style={{width:"100%"}}>
-            Create Token
-            <i className="fa-solid fa-arrow-right" aria-hidden="true"></i>
-          </a>
-          <div className="deploy-note">
-            <i className="fa-solid fa-check" aria-hidden="true"></i>
-            Signed from your wallet&nbsp;·&nbsp;source ready for verification on BscScan
-          </div>
-        </div>
-      </aside>
+      <HeroWizard />
     </div>
   </section>
 

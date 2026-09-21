@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:pricing": "tsx --test lib/pricing/tests/*.test.ts"
+    "test:pricing": "tsx --test lib/pricing/tests/*.test.ts",
+    "test": "tsx --test lib/pricing/tests/*.test.ts lib/draft/tests/*.test.ts"
   },
   "dependencies": {
     "next": "16.3.5",

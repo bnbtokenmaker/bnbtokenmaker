@@ -4,6 +4,7 @@ import Script from "next/script";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
 import { HeaderBehavior } from "../components/HeaderBehavior";
+import { ScrollReset } from "../components/ScrollReset";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -63,10 +64,6 @@ export default function RootLayout({
           href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
         />
         <meta name="theme-color" content="#f7f6f2" />
-        <link
-          rel="icon"
-          href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%23151210'/%3E%3Cg%20transform='translate(12%2012)'%20fill='none'%20stroke='%23f3ba2f'%20stroke-width='2.4'%3E%3Crect%20x='12.5'%20y='12.5'%20width='15'%20height='15'%20rx='3'%20transform='rotate(45%2020%2020)'/%3E%3Cpath%20d='M30.4%2030.4%2034%2034'%20stroke-linecap='round'/%3E%3Crect%20x='28.75'%20y='28.75'%20width='7.5'%20height='7.5'%20rx='2'%20transform='rotate(45%2032.5%2032.5)'%20fill='%23f3ba2f'%20stroke='none'/%3E%3C/g%3E%3C/svg%3E"
-        />
       </head>
       <body>
         <Script id="theme-init" strategy="beforeInteractive">
@@ -79,6 +76,7 @@ export default function RootLayout({
         <main id="main">{children}</main>
         <Footer />
         <HeaderBehavior />
+        <ScrollReset />
       </body>
     </html>
   );

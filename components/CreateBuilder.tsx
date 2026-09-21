@@ -23,6 +23,8 @@ import {
   selectedFeatureIds,
 } from "../lib/pricing/presets";
 import type { FeatureSelection, PresetId } from "../lib/pricing/presets";
+import { DRAFT_DEFAULTS } from "../lib/draft";
+import type { DraftConfig } from "../lib/draft";
 
 const SUMMARY_LABEL: Record<PaidFeatureId, string> = {
   burn: "Burnable",
@@ -89,13 +91,18 @@ function reconstructConfig(dto: PricingConfigDto): ConfigState {
 type CreateBuilderProps = {
   pricingConfigDto: PricingConfigDto;
   serverQuote: QuoteResponse;
+  initialDraft?: DraftConfig;
 };
 
-export function CreateBuilder({ pricingConfigDto, serverQuote }: CreateBuilderProps) {
-  const [name, setName] = useState("Aurora");
-  const [sym, setSym] = useState("AUR");
-  const [dec, setDec] = useState("18");
-  const [supply, setSupply] = useState("1,000,000,000");
+export function CreateBuilder({
+  pricingConfigDto,
+  serverQuote,
+  initialDraft = DRAFT_DEFAULTS,
+}: CreateBuilderProps) {
+  const [name, setName] = useState(() => initialDraft.name);
+  const [sym, setSym] = useState(() => initialDraft.symbol);
+  const [dec, setDec] = useState(() => initialDraft.decimals);
+  const [supply, setSupply] = useState(() => initialDraft.supply);
   const [feats, setFeats] = useState<FeatureSelection>(DEFAULT_FEAT_SELECTION);
   const [xMaxbuy, setXMaxbuy] = useState("1");
   const [xMaxwal, setXMaxwal] = useState("2");
@@ -223,7 +230,7 @@ export function CreateBuilder({ pricingConfigDto, serverQuote }: CreateBuilderPr
                 }
                 onBlur={() => setInv((cur) => ({ ...cur, sym: sym.trim() === "" }))}
               />
-              <span className="field-hint">Uppercase letters and numbers, e.g. AUR.</span>
+              <span className="field-hint">Uppercase letters and numbers, e.g. MAKER.</span>
               <span className="err">Symbol is required.</span>
             </label>
             <label className={"field" + (showDecErr ? " is-invalid" : "")} id="fld-dec">
@@ -235,17 +242,14 @@ export function CreateBuilder({ pricingConfigDto, serverQuote }: CreateBuilderPr
                 min={0}
                 max={18}
                 inputMode="numeric"
-                onChange={(e) => {
-                  const v = e.target.value;
-                  let out = v;
-                  if (v !== "") {
-                    const n = parseInt(v, 10);
-                    if (isNaN(n) || n < 0) out = "0";
-                    else if (n > 18) out = "18";
+                onChange={(e) => setDec(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                onBlur={() => {
+                  const n = parseInt(dec, 10);
+                  if (dec !== "" && !isNaN(n)) {
+                    setDec(String(Math.min(18, Math.max(0, n))));
                   }
-                  setDec(out);
+                  setInv((cur) => ({ ...cur, dec: !decValid }));
                 }}
-                onBlur={() => setInv((cur) => ({ ...cur, dec: !decValid }))}
               />
               <span className="field-hint">18 is the standard for BEP-20.</span>
               <span className="err">Decimals must be between 0 and 18.</span>

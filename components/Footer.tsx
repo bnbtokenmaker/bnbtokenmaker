@@ -10,31 +10,19 @@ function FooterMark() {
       fill="none"
       aria-hidden="true"
     >
-      <rect
-        x="12.5"
-        y="12.5"
-        width="15"
-        height="15"
-        rx="3"
-        transform="rotate(45 20 20)"
+      <circle
+        cx="20"
+        cy="20"
+        r="11"
         stroke="currentColor"
-        strokeWidth="2.4"
-      ></rect>
+        strokeWidth="3.4"
+      ></circle>
       <path
-        d="M30.4 30.4 34 34"
+        d="M20 12.5v15M12.5 20h15"
         stroke="currentColor"
-        strokeWidth="2.4"
+        strokeWidth="4.6"
         strokeLinecap="round"
       ></path>
-      <rect
-        x="28.75"
-        y="28.75"
-        width="7.5"
-        height="7.5"
-        rx="2"
-        transform="rotate(45 32.5 32.5)"
-        fill="currentColor"
-      ></rect>
     </svg>
   );
 }
