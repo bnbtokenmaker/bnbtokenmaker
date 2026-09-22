@@ -5,6 +5,7 @@ import { Manrope, Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import Script from "next/script";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
+import { GoogleAnalytics } from "../components/GoogleAnalytics";
 import { HeaderBehavior } from "../components/HeaderBehavior";
 import { ScrollReset } from "../components/ScrollReset";
 import { RouteTransition } from "../components/RouteTransition";
@@ -52,6 +53,10 @@ export const viewport: Viewport = {
 
 const themeInit = `(function(){try{var t=localStorage.getItem('btm-theme')||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)}catch(e){document.documentElement.setAttribute('data-theme','light')}})();`;
 
+// GA4 measurement ID (public). Empty in local/dev builds: GoogleAnalytics
+// renders nothing and the app behaves exactly as without analytics.
+const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+
 export default function RootLayout({
   children,
 }: {
@@ -72,6 +77,7 @@ export default function RootLayout({
         <meta name="theme-color" content="#f7f6f2" />
       </head>
       <body>
+        <GoogleAnalytics gaId={gaMeasurementId} />
         <Script id="theme-init" strategy="beforeInteractive">
           {themeInit}
         </Script>

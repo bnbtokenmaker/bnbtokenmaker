@@ -68,12 +68,12 @@ export default function Page() {
 
 <section className="legal-sec">
   <h2><span className="lno">06</span>Cookies and Local Storage</h2>
-  <p>The Service uses your browser&apos;s <b>local storage</b> to remember your theme preference (light or dark) under a single key. This stays on your device and is not transmitted. We do not currently use advertising cookies or third-party tracking cookies.</p>
+  <p>The Service uses your browser&apos;s <b>local storage</b> to remember your theme preference (light or dark) under a single key. This stays on your device and is not transmitted. Analytics-related cookies or similar technologies may also apply as described in section 07 below.</p>
 </section>
 
 <section className="legal-sec">
   <h2><span className="lno">07</span>Analytics</h2>
-  <p>At present, the prototype does not use any analytics tooling. If analytics are added in the future, this policy will be updated to explain exactly what is collected and how it is used.</p>
+  <p>The website uses <b>Google Analytics</b> to understand aggregate website usage and performance (for example, which pages are visited). Google Analytics is provided by Google and <b>may use cookies or similar technologies</b>. Information collected through Google Analytics is handled according to Google&apos;s own policies. The site does not currently operate a consent-management tool for analytics.</p>
 </section>
 
 <section className="legal-sec">
@@ -110,6 +110,7 @@ export default function Page() {
   <h2><span className="lno">14</span>Your Choices</h2>
   <ul>
     <li><b>Theme preference:</b> stored locally on your device; clear it with your browser settings.</li>
+    <li><b>Analytics cookies:</b> you can block or delete cookies through your browser settings; this may affect how the site measures usage but does not break core functionality.</li>
     <li><b>Contact form:</b> only you choose whether to fill it in.</li>
     <li><b>Binding information:</b> be aware that anything you put on the blockchain, including a token&apos;s configuration, is public and permanent.</li>
   </ul>

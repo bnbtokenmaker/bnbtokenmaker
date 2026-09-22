@@ -42,6 +42,9 @@ jobs:
         run: npm run lint
 
       - name: Build (Next.js standalone output)
+        env:
+          # Public GA4 measurement ID, baked in at build time (NEXT_PUBLIC_*).
+          NEXT_PUBLIC_GA_MEASUREMENT_ID: "G-0B1LCDWHW9"
         run: npm run build
 
       - name: Assemble deploy artifact
