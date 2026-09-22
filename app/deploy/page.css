@@ -1,92 +1,15 @@
 
-/* ===== DEPLOY: dedicated Review & Deploy route (self-contained) ===== */
-:root{
-  --bg:#f7f6f2;
-  --bg-soft:#efeee8;
-  --bg-raised:#fbfaf7;
-  --line:#e4e1d8;
-  --line-strong:#d7d3c4;
-  --text:#151410;
-  --text-2:#5f5a50;
-  --text-3:#898271;
-  --accent:#f3ba2f;
-  --accent-hover:#eab113;
-  --accent-ink:#171208;
-  --accent-t:#a87000;
-  --tint:rgba(222,176,32,.16);
-  --ring:rgba(226,178,28,.3);
-  --on-dark:#f4f2ec;
-  --deck-shadow:0 24px 50px -34px rgba(26,21,12,.3);
-  --danger:#a04a1f;
-  --danger-soft:rgba(201,84,35,.12);
-  --font-body:"Manrope","Space Grotesk",system-ui,sans-serif;
-  --font-display:"Space Grotesk","Manrope",system-ui,sans-serif;
-  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
-  --radius:12px;
-  --radius-sm:8px;
-  --container:1240px;
-  color-scheme:light;
-}
-[data-theme="dark"]{
-  --bg:#0f0e0b;
-  --bg-soft:#161410;
-  --bg-raised:#1c1914;
-  --line:#262119;
-  --line-strong:#352e23;
-  --text:#f1eee6;
-  --text-2:#b9b3a7;
-  --text-3:#837c70;
-  --accent:#f3ba2f;
-  --accent-hover:#ffc94a;
-  --accent-ink:#171208;
-  --accent-t:#f3ba2f;
-  --tint:rgba(243,186,47,.14);
-  --ring:rgba(243,186,47,.3);
-  --on-dark:#f4f2ec;
-  --deck-shadow:0 30px 70px -32px rgba(0,0,0,.65);
-  --danger:#e08a68;
-  --danger-soft:rgba(224,138,104,.14);
-  color-scheme:dark;
-}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
-button{cursor:pointer;font:inherit;color:inherit}
-a{color:inherit;text-decoration:none}
-input,button{font:inherit;color:inherit}
-
-.container{max-width:var(--container);margin-inline:auto;padding-inline:clamp(1.25rem,4vw,2rem)}
+/* ===== DEPLOY: dedicated Review & Deploy route =====
+   Site shell (tokens, base, header/nav, footer, buttons) comes from
+   ../site-chrome.css, imported first in page.tsx — this file holds
+   deploy-specific rules only. */
 .app{position:relative;padding:clamp(1rem,2.4vw,1.6rem) 0 clamp(2rem,4vw,2.75rem)}
 .app-head{margin-bottom:1rem}
 .app-head .kicker{color:var(--accent-t)}
 .app-head h1{font:650 clamp(1.45rem,3vw,2rem)/1.1 var(--font-display);letter-spacing:-.02em;margin:.55rem 0 .4rem;text-wrap:balance;max-width:30ch}
 .app-head .intro{font-size:.9rem;color:var(--text-2);max-width:72ch}
-.kicker{display:flex;align-items:center;gap:.55rem;font:500 .7rem/1 var(--font-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--text-3)}
-.kicker .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
 
-.btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:.55rem;
-  font:600 .95rem/1 var(--font-body);
-  padding:.85rem 1.35rem;
-  border-radius:10px;
-  border:1px solid transparent;
-  white-space:nowrap;
-  transition:background-color .18s ease,border-color .18s ease,color .18s ease,transform .18s ease;
-}
-.btn i{flex:none;font-size:.9rem}
-.btn-primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
-.btn-ghost{border-color:var(--line-strong);color:var(--text);background:transparent}
-.btn-ghost:hover{border-color:var(--text-3);background:var(--bg-soft)}
-.btn-dark{background:var(--accent-ink);color:var(--on-dark);border-color:var(--accent-ink)}
-.btn-dark:hover{background:#231c0b}
-.btn:disabled{opacity:.45;cursor:not-allowed;pointer-events:none;transform:none}
-@media (hover:hover) and (prefers-reduced-motion:no-preference){
-  .btn:hover{transform:translateY(-1px)}
-  .btn:active{transform:translateY(0)}
-}
-
-.deploy-back{display:inline-flex;align-items:center;gap:.5rem;font:700 .85rem/1 var(--font-body);color:var(--text-2);margin-bottom:.8rem}
-.deploy-back:hover{color:var(--accent-t)}
+.deploy-back{min-height:42px;padding:.6rem 1rem;font-size:.88rem;font-weight:700;margin-bottom:1rem;align-self:flex-start}
 .deploy-back i{font-size:.75rem}
 
 .deploy-flow{margin-bottom:1rem}

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "../site-chrome.css";
 import "./page.css";
 import { DeployPage } from "../../components/DeployPage";
 
