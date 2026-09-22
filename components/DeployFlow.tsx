@@ -23,6 +23,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { useConnection } from "wagmi";
 import { useRouter } from "next/navigation";
@@ -56,7 +57,15 @@ import {
   validateTokenConfig,
   type ValidatedTokenConfig,
 } from "../lib/token/config";
-import { factoryAbi } from "../lib/token/factory";
+import { factoryAbi, factoryAddress } from "../lib/token/factory";
+import {
+  clearDeployResult,
+  fetchAndVerifyDeployResult,
+  loadDeployResult,
+  saveDeployResult,
+  type DeployResultV1,
+  type VerifiedDeployment,
+} from "../lib/deploy/result";
 import {
   PHASE6B_CHAIN_ID,
   Phase6bDeploymentError,
@@ -137,6 +146,113 @@ export function shouldScrollToSuccess(
   seenTxHash: string | null
 ): boolean {
   return phase === "success" && txHash !== null && seenTxHash !== txHash;
+}
+
+type SuccessPanelProps = {
+  name: string;
+  symbol: string;
+  token: `0x${string}`;
+  txHash: `0x${string}` | null;
+  copied: string | null;
+  onCopy: (label: string, value: string) => void;
+  onCreateAnother: () => void;
+  /** Live path passes the scroll-target ref; restored path passes null. */
+  panelRef: RefObject<HTMLDivElement | null> | null;
+};
+
+/**
+ * Shared success presentation for live and refresh-restored success.
+ * Rendered ONLY from a confirmed receipt + decoded factory event — never
+ * from storage alone (the restored path verifies first; see result.ts).
+ */
+function SuccessPanel({
+  name,
+  symbol,
+  token,
+  txHash,
+  copied,
+  onCopy,
+  onCreateAnother,
+  panelRef,
+}: SuccessPanelProps) {
+  return (
+    <div
+      className="deploy-success"
+      role="status"
+      ref={panelRef}
+      tabIndex={-1}
+      aria-label="Token deployed successfully"
+    >
+      <h3>
+        <i className="fa-solid fa-circle-check" aria-hidden="true"></i>Token deployed
+        successfully
+      </h3>
+      <p className="deploy-success-token">
+        {name} · {symbol}
+      </p>
+      <dl className="deploy-review">
+        <div>
+          <dt>Contract</dt>
+          <dd>
+            <code className="mono">{token}</code>{" "}
+            <button
+              type="button"
+              className="linklike"
+              aria-label="Copy contract address"
+              onClick={() => onCopy("token", token)}
+            >
+              {copied === "token" ? "Copied" : "Copy"}
+            </button>
+          </dd>
+        </div>
+        <div>
+          <dt>Transaction</dt>
+          <dd>
+            <code className="mono">{shortenTxHash(txHash ?? "")}</code>{" "}
+            <button
+              type="button"
+              className="linklike"
+              aria-label="Copy transaction hash"
+              onClick={() => onCopy("tx", txHash ?? "")}
+            >
+              {copied === "tx" ? "Copied" : "Copy"}
+            </button>
+          </dd>
+        </div>
+        <div>
+          <dt>Network</dt>
+          <dd>BNB Smart Chain Testnet (97)</dd>
+        </div>
+      </dl>
+      <div className="deploy-actions deploy-success-actions">
+        {explorerTokenPageUrl(token) && (
+          <a
+            className="btn btn-dark btn-deploy"
+            href={explorerTokenPageUrl(token) ?? ""}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View contract on explorer
+          </a>
+        )}
+        <span className="deploy-actions-row">
+          {txHash && explorerTxUrl(txHash) && (
+            <a
+              className="btn btn-ghost"
+              href={explorerTxUrl(txHash) ?? ""}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View transaction
+            </a>
+          )}
+          <button type="button" className="btn btn-ghost" onClick={onCreateAnother}>
+            Create another token
+          </button>
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function FeatureSummaryLabel({ id }: { id: string }) {
@@ -563,6 +679,15 @@ export function DeployFlow({
         const token = await waitForReceipt(txHash);
         setDeployedToken(token);
         clearPendingDeployment();
+        // Persist a minimal recovery hint for same-tab refresh. It proves
+        // nothing by itself: refresh recovery re-verifies the receipt and
+        // event before any success UI may return.
+        saveDeployResult({
+          txHash,
+          contractAddress: token,
+          tokenName: tokenName.trim(),
+          tokenSymbol: tokenSymbol.trim().toUpperCase(),
+        });
         setRecovered(null);
         dispatch({ type: "RECEIPT_OK" });
       } catch (error) {
@@ -572,7 +697,7 @@ export function DeployFlow({
         });
       }
     },
-    [dispatch, waitForReceipt]
+    [dispatch, waitForReceipt, tokenName, tokenSymbol]
   );
 
   const startDeployment = useCallback(async () => {
@@ -682,14 +807,65 @@ export function DeployFlow({
   const router = useRouter();
 
   // Success-state exit: drop the just-deployed draft (so /create starts
-  // clean) and any pending-tx record, then return to /create same-tab.
+  // clean), the success recovery record, and any pending-tx record, then
+  // return to /create same-tab. No old success state can reappear.
   const createAnotherToken = useCallback(() => {
     clearDeployDraft();
+    clearDeployResult();
     clearPendingDeployment();
     setRecovered(null);
     setDeployedToken(null);
     router.push("/create");
   }, [router]);
+
+  // Refresh recovery for CONFIRMED success (read-only).
+  // Precedence: verified result > pending hash > review. The stored record
+  // is a hint only: success UI returns solely from a freshly verified
+  // receipt + factory event. No wallet, no send path anywhere in this flow.
+  const [storedResult] = useState<DeployResultV1 | null>(() => loadDeployResult());
+  const verifyFactory = factoryAddress(PHASE6B_CHAIN_ID);
+  const verifyQuery = useQuery({
+    queryKey: ["deploy-result-verify", storedResult?.txHash ?? null],
+    queryFn: async (): Promise<VerifiedDeployment> => {
+      if (!storedResult || !verifyFactory) {
+        throw new DeployFlowError("factory-unavailable");
+      }
+      try {
+        return await fetchAndVerifyDeployResult(
+          (hash) => testnetPublicClient.getTransactionReceipt({ hash }),
+          storedResult,
+          verifyFactory
+        );
+      } catch (error) {
+        if (
+          error instanceof DeployFlowError &&
+          error.code !== "rpc-unavailable" &&
+          error.code !== "factory-unavailable"
+        ) {
+          // Definitive on-chain verdict (missing/reverted receipt, no or
+          // mismatched factory event): drop the hint so later mounts stop
+          // chasing it. Transient RPC outages keep the hint for retry.
+          clearDeployResult();
+        }
+        if (error instanceof DeployFlowError) throw error;
+        throw new DeployFlowError("rpc-unavailable");
+      }
+    },
+    enabled: !!storedResult && !!verifyFactory && machine.phase === "idle",
+    retry: false,
+    staleTime: Infinity,
+  });
+  const verifyingResult =
+    !!storedResult && machine.phase === "idle" && verifyQuery.isPending;
+  const resultUnverifiable =
+    !!storedResult && machine.phase === "idle" && verifyQuery.isError;
+  const restoredToken: `0x${string}` | null =
+    storedResult && machine.phase === "idle" && verifyQuery.data
+      ? verifyQuery.data.token
+      : null;
+  const devVerifyCode = resultUnverifiable
+    ? devQueryErrorCode(verifyQuery.error, "receipt-timeout")
+    : null;
 
   // Safety net only: after a CONFIRMED receipt, bring a possibly
   // below-the-fold success panel into view once per transaction. Layout
@@ -743,7 +919,9 @@ export function DeployFlow({
   return (
     <div className="deploy-flow">
       {/* Session recovery banner: never lost, never auto-resubmitted. */}
-      {recovered && machine.phase === "idle" && (
+      {recovered &&
+        machine.phase === "idle" &&
+        (!storedResult || resultUnverifiable) && (
         <div className="deploy-banner" role="status">
           <span className="deploy-banner-ic" aria-hidden="true">
             <i className="fa-solid fa-clock-rotate-left"></i>
@@ -892,85 +1070,66 @@ export function DeployFlow({
             </div>
           </div>
           <div className="deploy-panel deploy-card" aria-label="Deployment">
-            {machine.phase === "success" && deployedToken ? (
-              <div
-                className="deploy-success"
-                role="status"
-                ref={successRef}
-                tabIndex={-1}
-                aria-label="Token deployed successfully"
-              >
-                <h3>
-                  <i className="fa-solid fa-circle-check" aria-hidden="true"></i>Token deployed
-                  successfully
-                </h3>
-                <p className="deploy-success-token">
-                  {tokenNameView} · {tokenSymbolView}
-                </p>
-                <dl className="deploy-review">
-                  <div>
-                    <dt>Contract</dt>
-                    <dd>
-                      <code className="mono">{deployedToken}</code>{" "}
-                      <button
-                        type="button"
-                        className="linklike"
-                        aria-label="Copy contract address"
-                        onClick={() => void copyText("token", deployedToken)}
-                      >
-                        {copied === "token" ? "Copied" : "Copy"}
-                      </button>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Transaction</dt>
-                    <dd>
-                      <code className="mono">{shortenTxHash(machine.txHash ?? "")}</code>{" "}
-                      <button
-                        type="button"
-                        className="linklike"
-                        aria-label="Copy transaction hash"
-                        onClick={() => void copyText("tx", machine.txHash ?? "")}
-                      >
-                        {copied === "tx" ? "Copied" : "Copy"}
-                      </button>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Network</dt>
-                    <dd>BNB Smart Chain Testnet (97)</dd>
-                  </div>
-                </dl>
-                <div className="deploy-actions deploy-success-actions">
-                  {explorerTokenPageUrl(deployedToken) && (
-                    <a
-                      className="btn btn-dark btn-deploy"
-                      href={explorerTokenPageUrl(deployedToken) ?? ""}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      View contract on explorer
-                    </a>
-                  )}
-                  <span className="deploy-actions-row">
-                    {machine.txHash && explorerTxUrl(machine.txHash) && (
+            {restoredToken && storedResult && machine.phase === "idle" ? (
+              <SuccessPanel
+                name={storedResult.tokenName}
+                symbol={storedResult.tokenSymbol}
+                token={restoredToken}
+                txHash={storedResult.txHash}
+                copied={copied}
+                onCopy={copyText}
+                onCreateAnother={createAnotherToken}
+                panelRef={null}
+              />
+            ) : machine.phase === "success" && deployedToken ? (
+              <SuccessPanel
+                name={tokenNameView}
+                symbol={tokenSymbolView}
+                token={deployedToken}
+                txHash={machine.txHash}
+                copied={copied}
+                onCopy={copyText}
+                onCreateAnother={createAnotherToken}
+                panelRef={successRef}
+              />
+            ) : (
+              <>
+              {verifyingResult ? (
+                <div className="deploy-status" role="status" aria-live="polite">
+                  <span className="deploy-phase" data-deploy-phase="verifying">
+                    Verifying deployment
+                  </span>
+                  <p className="deploy-muted">
+                    Checking the confirmed transaction on BNB Smart Chain Testnet. This
+                    re-reads the public receipt only — no wallet confirmation and no new
+                    transaction.
+                  </p>
+                  {storedResult && explorerTxUrl(storedResult.txHash) && (
+                    <p className="deploy-muted">
                       <a
-                        className="btn btn-ghost"
-                        href={explorerTxUrl(machine.txHash) ?? ""}
+                        className="linklike"
+                        href={explorerTxUrl(storedResult.txHash) ?? ""}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
                         View transaction
                       </a>
-                    )}
-                    <button type="button" className="btn btn-ghost" onClick={createAnotherToken}>
-                      Create another token
-                    </button>
-                  </span>
+                    </p>
+                  )}
                 </div>
-              </div>
-            ) : (
-              <>
+              ) : (
+                <>
+              {resultUnverifiable ? (
+                <p className="deploy-muted">
+                  Previous deployment result could not be verified. Review your configuration
+                  below — nothing will be sent automatically.
+                </p>
+              ) : null}
+              {devVerifyCode ? (
+                <p className="deploy-devnote" data-dev-note="deploy-verify">
+                  dev verify:{devVerifyCode}
+                </p>
+              ) : null}
             <div className="deploy-status" role="status" aria-live="polite">
               <span
                 className={`deploy-phase deploy-phase-${machine.phase}`}
@@ -1161,6 +1320,8 @@ export function DeployFlow({
                   </>
               )}
             </div>
+                </>
+              )}
               </>
           )}
           </div>
