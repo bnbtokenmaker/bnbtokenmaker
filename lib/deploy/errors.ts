@@ -252,3 +252,24 @@ export function classifyReceiptFailure(error: unknown): DeployErrorCode {
   if (/revert/i.test(text)) return "tx-reverted";
   return "receipt-timeout";
 }
+
+/**
+ * DEVELOPMENT-ONLY query diagnostics.
+ *
+ * Returns the sanitized DeployErrorCode behind a failed React Query fetch
+ * (quote/gas) so an invisible fail-closed state can be diagnosed locally.
+ * Returns null in production builds (so production UI is byte-identical)
+ * and for absent errors. Raw provider/RPC text is NEVER returned — only the
+ * code, which maps to fixed copy in `deployErrorMessage`.
+ */
+export function devQueryErrorCode(
+  error: unknown,
+  fallback: DeployErrorCode
+): DeployErrorCode | null {
+  if (typeof process !== "undefined" && process.env.NODE_ENV === "production") {
+    return null;
+  }
+  if (error instanceof DeployFlowError) return error.code;
+  if (error === null || error === undefined) return null;
+  return fallback;
+}

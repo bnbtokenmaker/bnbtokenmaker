@@ -702,6 +702,7 @@ main#main.route-enter{animation:route-enter 160ms ease-out}
 .deploy-tx{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg-soft);padding:.7rem .9rem;margin:1.1rem 0;font-size:.9rem}
 .deploy-tx-label{font:700 .72rem/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--text-3)}
 .mono{font-family:var(--font-mono);font-size:.85rem;overflow-wrap:anywhere}
+.deploy-devnote{font:500 .72rem/1.5 var(--font-mono);letter-spacing:.04em;color:var(--text-3);border:1px dashed var(--line-strong);border-radius:var(--radius-sm);padding:.4rem .6rem;margin-top:.6rem}
 .linklike{background:none;border:0;padding:0;color:var(--accent-t);font-weight:700;font-size:.88rem;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .deploy-tx a{color:var(--accent-t);font-weight:700;font-size:.88rem;text-decoration:underline;text-underline-offset:3px}
 .deploy-actions{margin-top:1.25rem;display:flex;flex-direction:column;gap:.6rem}

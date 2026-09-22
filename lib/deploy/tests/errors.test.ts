@@ -5,6 +5,7 @@ import {
   classifyDeployFailure,
   classifyReceiptFailure,
   deployErrorMessage,
+  devQueryErrorCode,
   fallbackDeployMessage,
   DeployFlowError,
 } from "../errors";
@@ -106,6 +107,33 @@ describe("deploy errors — failure classification", () => {
     );
     assert.equal(classifyDeployFailure(null), "tx-submit-failed");
     assert.equal(classifyDeployFailure(undefined, "rpc-unavailable"), "rpc-unavailable");
+  });
+
+  it("exposes sanitized query codes in development, never raw errors", () => {
+    assert.equal(
+      devQueryErrorCode(new DeployFlowError("factory-unavailable"), "gas-estimate-failed"),
+      "factory-unavailable"
+    );
+    assert.equal(
+      devQueryErrorCode(new Error("0x93f blob"), "gas-estimate-failed"),
+      "gas-estimate-failed"
+    );
+    assert.equal(devQueryErrorCode(null, "quote-stale"), null);
+    assert.equal(devQueryErrorCode(undefined, "quote-stale"), null);
+  });
+
+  it("hides query codes in production builds", () => {
+    const env = process.env as Record<string, string | undefined>;
+    const previous = env.NODE_ENV;
+    env.NODE_ENV = "production";
+    try {
+      assert.equal(
+        devQueryErrorCode(new DeployFlowError("factory-unavailable"), "gas-estimate-failed"),
+        null
+      );
+    } finally {
+      env.NODE_ENV = previous;
+    }
   });
 
   it("classifies receipt failures into reverted vs unknown-confirmation", () => {

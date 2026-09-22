@@ -74,6 +74,7 @@ import {
   classifyDeployFailure,
   classifyReceiptFailure,
   deployErrorMessage,
+  devQueryErrorCode,
   type DeployErrorCode,
 } from "../lib/deploy/errors";
 import {
@@ -337,6 +338,14 @@ export function DeployFlow({
     onTestnet && reviewValid ? (gasQuery.data ?? null) : null;
   const gasLoading = onTestnet && reviewValid && gasQuery.isPending;
   const gasFailed = onTestnet && reviewValid && gasQuery.isError;
+  // Development-only diagnostics: sanitized error codes behind failed
+  // quote/gas fetches. Null in production, so production UI is unchanged.
+  const devQuoteCode = quoteFailed
+    ? devQueryErrorCode(quoteQuery.error, "quote-stale")
+    : null;
+  const devGasCode = gasFailed
+    ? devQueryErrorCode(gasQuery.error, "gas-estimate-failed")
+    : null;
 
   const copyText = useCallback(async (label: string, value: string) => {
     try {
@@ -784,6 +793,11 @@ export function DeployFlow({
               </dd>
             </div>
           </dl>
+          {devQuoteCode ? (
+            <p className="deploy-devnote" data-dev-note="deploy-query">
+              dev quote:{devQuoteCode}
+            </p>
+          ) : null}
           {quoteFailed && (
             <button type="button" className="btn btn-ghost" onClick={() => void refreshQuote()}>
               Refresh price
@@ -900,6 +914,12 @@ export function DeployFlow({
                   </dd>
                 </div>
               </dl>
+              {devQuoteCode || devGasCode ? (
+                <p className="deploy-devnote" data-dev-note="deploy-query">
+                  dev{devQuoteCode ? ` quote:${devQuoteCode}` : ""}
+                  {devGasCode ? ` gas:${devGasCode}` : ""}
+                </p>
+              ) : null}
               <p className="deploy-muted">
                 Testnet deployments are fee-free: you pay 0 BNB platform fee. Network gas is
                 charged separately by BNB Smart Chain and never mixed into the platform price.
