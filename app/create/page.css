@@ -381,6 +381,9 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .net-state[data-netstate="wrong"]{color:var(--danger)}
 .net-state[data-netstate="wrong"]::before{background:var(--danger)}
 .net-state[data-netstate="wrong"] .ns-txt::after{content:"Wrong Network \00b7 Switch to BNB Smart Chain"}
+.net-state[data-netstate="disconnected"]{color:var(--text-3)}
+.net-state[data-netstate="disconnected"]::before{background:var(--text-3)}
+.net-state[data-netstate="disconnected"] .ns-txt::after{content:"Not connected \00b7 Connect a wallet"}
 
 .progress{display:flex;align-items:center;gap:1.05rem;margin-bottom:clamp(1.15rem,2.4vw,1.8rem);border:1px solid var(--line);border-radius:12px;background:var(--bg-soft);padding:.9rem 1.15rem;overflow-x:auto;scrollbar-width:none}
 .progress::-webkit-scrollbar{display:none}

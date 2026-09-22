@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useConnection, useSwitchChain } from "wagmi";
+import { useConnection } from "wagmi";
 
-import { BNB_MAINNET_CHAIN_ID, networkLabel } from "../lib/wallet/chains";
-import { describeWalletError } from "../lib/wallet/errors";
+import { networkLabel } from "../lib/wallet/chains";
 import { shortenAddress } from "../lib/wallet/format";
 import { walletDeploymentEligibility } from "../lib/wallet/network";
 import { useWalletUI } from "./wallet/WalletUI";
@@ -102,6 +101,122 @@ type CreateBuilderProps = {
   initialDraft?: DraftConfig;
 };
 
+export type SummaryActionsProps = {
+  walletConnected: boolean;
+  needsNetworkSwitch: boolean;
+  connectorName: string | null;
+  walletAddrText: string;
+  eligible: boolean;
+  /** Human label of the live chain, shown only in the Wrong Network copy. */
+  wrongChainLabel: string | null;
+  /** Test hook: render the manual-switch explanation open. */
+  forceShowHelp?: boolean;
+  onConnect: () => void;
+  onOpenAccount: () => void;
+};
+
+/**
+ * Pure presentational wallet/network actions for the Deployment Summary.
+ * Every branch is driven by caller-supplied verified state — this component
+ * performs no chain derivation itself, so rendered-output tests can assert
+ * the exact markup (warn visibility, manual-switch info, eligibility flag,
+ * note text) for any given state.
+ *
+ * Phase 6A never requests a network change: the Wrong Network state is
+ * informational only ("Switch network in your wallet"), optionally revealing
+ * a short explanation. No RPC is ever sent from this component.
+ */
+export function SummaryActions({
+  walletConnected,
+  needsNetworkSwitch,
+  connectorName,
+  walletAddrText,
+  eligible,
+  wrongChainLabel,
+  forceShowHelp = false,
+  onConnect,
+  onOpenAccount,
+}: SummaryActionsProps) {
+  const [showSwitchHelp, setShowSwitchHelp] = useState(forceShowHelp);
+  const wrongDetail = `Your wallet is connected to ${wrongChainLabel ?? "an unsupported network"}. Switch to BNB Smart Chain in your wallet to continue.`;
+  return (
+    <div className="sum-actions">
+      {needsNetworkSwitch ? (
+        <div className="sum-netwarn" id="sumNetWarn" role="status">
+          <span className="snw-ic" aria-hidden="true"><i className="fa-solid fa-triangle-exclamation"></i></span>
+          <span className="snw-txt">
+            <b>Wrong network</b>
+            <span>{wrongDetail}</span>
+          </span>
+        </div>
+      ) : null}
+      {!walletConnected ? (
+        <button
+          className="btn btn-primary"
+          type="button"
+          id="walletBtn"
+          onClick={onConnect}
+        >
+          <i className="fa-solid fa-wallet" aria-hidden="true"></i>Connect Wallet
+        </button>
+      ) : needsNetworkSwitch ? (
+        <div className="sum-manual-switch">
+          <button
+            className="btn btn-primary"
+            type="button"
+            id="walletBtn"
+            onClick={() => setShowSwitchHelp((value) => !value)}
+            aria-expanded={showSwitchHelp}
+          >
+            <i className="fa-solid fa-arrow-right-arrow-left" aria-hidden="true"></i>
+            Switch network in your wallet
+          </button>
+          {showSwitchHelp ? (
+            <p className="sum-note" role="status">
+              Open your wallet and set the network for this site to BNB Smart
+              Chain (BSC): in MetaMask, click the site icon at the top, then
+              the network name, then select BNB Smart Chain. Changing only the
+              wallet&apos;s main network is not enough — wallets can remember a
+              separate network for each site.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <button
+          className="btn btn-ghost sum-wallet"
+          type="button"
+          id="walletBtn"
+          onClick={onOpenAccount}
+        >
+          <span className="wal-dot" aria-hidden="true"></span>
+          <span className="sum-wallet-name">
+            {connectorName ?? "Wallet"}
+          </span>
+          <span className="sum-wallet-addr">
+            {walletAddrText}
+          </span>
+        </button>
+      )}
+      <button
+        className="btn btn-dark"
+        type="button"
+        id="createBtn"
+        disabled
+        data-deploy-eligible={eligible ? "true" : "false"}
+      >
+        Create Token
+      </button>
+      <p className="sum-note">
+        {!walletConnected
+          ? "Connect your wallet to continue."
+          : needsNetworkSwitch
+            ? `Wrong Network \u00b7 ${wrongDetail}`
+            : "Wallet connected. Token deployment is not enabled yet."}
+      </p>
+    </div>
+  );
+}
+
 export function CreateBuilder({
   pricingConfigDto,
   serverQuote,
@@ -125,12 +240,6 @@ export function CreateBuilder({
   } = useConnection();
   const network = useWalletNetwork();
   const { open: openWallet } = useWalletUI();
-  const {
-    mutate: switchChain,
-    isPending: isSwitchingChain,
-    error: switchChainError,
-    reset: resetSwitchChain,
-  } = useSwitchChain();
   const walletChainId = network.chainId;
   const needsNetworkSwitch = network.status === "wrong";
   // Authoritative, reusable deployment gate for Phase 6B. Deployment is NOT
@@ -680,77 +789,18 @@ export function CreateBuilder({
             </div>
           )}
           <p className="gas-note">Network gas is paid to BNB Smart Chain separately and shown just before you sign.</p>
-          <div className="sum-actions">
-            {needsNetworkSwitch ? (
-              <div className="sum-netwarn" id="sumNetWarn" role="status">
-                <span className="snw-ic" aria-hidden="true"><i className="fa-solid fa-triangle-exclamation"></i></span>
-                <span className="snw-txt">
-                  <b>Wrong network</b>
-                  <span>Your wallet is connected to an unsupported network. Switch to BNB Smart Chain to continue.</span>
-                </span>
-              </div>
-            ) : null}
-            {!walletConnected ? (
-              <button
-                className="btn btn-primary"
-                type="button"
-                id="walletBtn"
-                onClick={() => openWallet("connect")}
-              >
-                <i className="fa-solid fa-wallet" aria-hidden="true"></i>Connect Wallet
-              </button>
-            ) : needsNetworkSwitch ? (
-              <button
-                className="btn btn-primary"
-                type="button"
-                id="walletBtn"
-                disabled={isSwitchingChain}
-                onClick={() => {
-                  resetSwitchChain();
-                  switchChain({ chainId: BNB_MAINNET_CHAIN_ID });
-                }}
-              >
-                <i className="fa-solid fa-arrow-right-arrow-left" aria-hidden="true"></i>
-                {isSwitchingChain ? "Switching\u2026" : "Switch to BNB Smart Chain"}
-              </button>
-            ) : (
-              <button
-                className="btn btn-ghost sum-wallet"
-                type="button"
-                id="walletBtn"
-                onClick={() => openWallet("account")}
-              >
-                <span className="wal-dot" aria-hidden="true"></span>
-                <span className="sum-wallet-name">
-                  {walletConnector?.name ?? "Wallet"}
-                </span>
-                <span className="sum-wallet-addr">
-                  {shortenAddress(walletAddress)}
-                </span>
-              </button>
-            )}
-            <button
-              className="btn btn-dark"
-              type="button"
-              id="createBtn"
-              disabled
-              data-deploy-eligible={deploymentEligibility.eligible ? "true" : "false"}
-            >
-              Create Token
-            </button>
-            <p className="sum-note">
-              {!walletConnected
-                ? "Connect your wallet to continue."
-                : needsNetworkSwitch
-                  ? `Wrong Network \u00b7 You are on ${networkLabel(walletChainId)}. Switch to BNB Smart Chain to continue.`
-                  : "Wallet connected. Token deployment is not enabled yet."}
-            </p>
-            {needsNetworkSwitch && switchChainError ? (
-              <p className="sum-note is-err" role="alert">
-                {describeWalletError(switchChainError)}
-              </p>
-            ) : null}
-          </div>
+          <SummaryActions
+            walletConnected={walletConnected}
+            needsNetworkSwitch={needsNetworkSwitch}
+            connectorName={walletConnector?.name ?? null}
+            walletAddrText={shortenAddress(walletAddress)}
+            eligible={deploymentEligibility.eligible}
+            wrongChainLabel={
+              needsNetworkSwitch ? networkLabel(walletChainId) : null
+            }
+            onConnect={() => openWallet("connect")}
+            onOpenAccount={() => openWallet("account")}
+          />
         </div>
       </aside>
     </div>

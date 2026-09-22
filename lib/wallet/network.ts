@@ -26,6 +26,50 @@ export function classifyWalletNetwork(
   return "wrong";
 }
 
+/**
+ * Fail-closed display derivation. Renders BSC Connected ONLY when every
+ * authority condition holds simultaneously:
+ * - wagmi reports a live connection,
+ * - a pinned provider session is currently valid (same object, same account),
+ * - the verified reading belongs to the active connector (uid match),
+ * - the live chain reading is a number.
+ *
+ * A provider merely CLAIMING 56 (stale object, superseded session,
+ * disconnected connector, unknown state) resolves to Wrong Network with a
+ * null chain — never connected, never deployment-eligible.
+ */
+export type DisplayNetworkInput = {
+  wagmiConnected: boolean;
+  connectorUid: string | null;
+  sessionValid: boolean;
+  verifiedUid: string | null;
+  liveChainId: number | null;
+};
+
+export type DisplayNetwork = {
+  chainId: number | null;
+  status: WalletNetworkStatus;
+};
+
+export function resolveDisplayNetwork(input: DisplayNetworkInput): DisplayNetwork {
+  const uidMatch =
+    typeof input.connectorUid === "string" &&
+    input.connectorUid.length > 0 &&
+    input.connectorUid === input.verifiedUid;
+  const liveChainId =
+    input.wagmiConnected && input.sessionValid && uidMatch
+      ? input.liveChainId
+      : null;
+  const chainId = typeof liveChainId === "number" ? liveChainId : null;
+  let status = classifyWalletNetwork(input.wagmiConnected, chainId);
+  if (input.wagmiConnected && chainId === null) {
+    // Connected but unverifiable => Wrong Network (warning visible,
+    // deployment ineligible), never "connected".
+    status = "wrong";
+  }
+  return { chainId, status };
+}
+
 /** The chain Phase 6B is allowed to deploy to. */
 export const DEPLOYMENT_CHAIN_ID: SupportedChainId = BNB_MAINNET_CHAIN_ID;
 

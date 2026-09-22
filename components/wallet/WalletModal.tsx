@@ -16,11 +16,9 @@ import {
   useConnection,
   useConnectors,
   useDisconnect,
-  useSwitchChain,
 } from "wagmi";
 
 import {
-  BNB_MAINNET_CHAIN_ID,
   explorerAddressUrl,
   isSupportedChainId,
   networkLabel,
@@ -28,6 +26,13 @@ import {
 import { browserWalletConnector } from "../../lib/wallet/config";
 import { describeWalletError } from "../../lib/wallet/errors";
 import { formatBalance, shortenAddress } from "../../lib/wallet/format";
+import {
+  clearPendingSelection,
+  clearProviderSession,
+  confirmUserSelection,
+  recordUserSelection,
+  type SessionConnectorLike,
+} from "../../lib/wallet/session";
 import {
   BROWSER_WALLET_CONNECTOR_ID,
   buildWalletOptions,
@@ -139,19 +144,14 @@ function WalletDialog() {
   const connection = useConnection();
   const connectors = useConnectors();
   const [connectError, setConnectError] = useState<unknown>(null);
-  const [switchError, setSwitchError] = useState<unknown>(null);
+  const [showSwitchHelp, setShowSwitchHelp] = useState(false);
   const {
     mutate: connect,
+    connectAsync,
     isPending: isConnecting,
     variables: connectVariables,
   } = useConnect({
     mutation: { onError: (error) => setConnectError(error) },
-  });
-  const {
-    mutate: switchChain,
-    isPending: isSwitching,
-  } = useSwitchChain({
-    mutation: { onError: (error) => setSwitchError(error) },
   });
   const { mutate: disconnect } = useDisconnect();
 
@@ -212,7 +212,7 @@ function WalletDialog() {
   }, []);
 
   const handleConnect = useCallback(
-    (connectorId: string) => {
+    async (connectorId: string) => {
       setConnectError(null);
       if (connectorId === BROWSER_WALLET_CONNECTOR_ID) {
         // On-demand fallback for browsers with no EIP-6963 provider. Never
@@ -222,17 +222,34 @@ function WalletDialog() {
       }
       const target = connectorsById.get(connectorId);
       if (!target) return;
-      connect({ connector: target });
+      // Pin the EXACT EIP-6963 provider object behind the clicked connector
+      // before connecting; confirm it after connect resolves.
+      let recorded = false;
+      try {
+        await recordUserSelection(target as SessionConnectorLike);
+        recorded = true;
+      } catch {
+        recorded = false;
+      }
+      try {
+        const result = await connectAsync({ connector: target });
+        if (recorded) {
+          confirmUserSelection(
+            target as SessionConnectorLike,
+            result.accounts
+          );
+        }
+      } catch (error) {
+        clearPendingSelection();
+        setConnectError(error);
+      }
     },
-    [connectorsById, connect],
+    [connectorsById, connect, connectAsync],
   );
 
-  const handleSwitch = useCallback(() => {
-    setSwitchError(null);
-    switchChain({ chainId: BNB_MAINNET_CHAIN_ID });
-  }, [switchChain]);
-
   const handleDisconnect = useCallback(() => {
+    clearProviderSession();
+    clearPendingSelection();
     disconnect();
     close();
   }, [disconnect, close]);
@@ -283,9 +300,6 @@ function WalletDialog() {
       : null;
   const connectErrorMessage = connectError
     ? describeWalletError(connectError)
-    : null;
-  const switchErrorMessage = switchError
-    ? describeWalletError(switchError)
     : null;
 
   const renderConnect = () => (
@@ -476,24 +490,31 @@ function WalletDialog() {
             ) : null}
           </div>
 
-          {switchErrorMessage ? (
-            <p className="wal-alert" role="alert">
-              <i className="fa-solid fa-triangle-exclamation" aria-hidden="true" />
-              {switchErrorMessage}
-            </p>
-          ) : null}
-
           <div className="wal-actions">
             {!supported ? (
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleSwitch}
-                disabled={isSwitching}
-              >
-                <i className="fa-solid fa-arrow-right-arrow-left" aria-hidden="true" />
-                {isSwitching ? "Switching\u2026" : "Switch to BNB Smart Chain"}
-              </button>
+              <div className="wal-manual-switch">
+                <p className="wal-manual-title">
+                  <i className="fa-solid fa-triangle-exclamation" aria-hidden="true" />
+                  Wrong network — switch networks in your wallet to continue.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => setShowSwitchHelp((value) => !value)}
+                  aria-expanded={showSwitchHelp}
+                >
+                  <i className="fa-solid fa-arrow-right-arrow-left" aria-hidden="true" />
+                  Switch network in your wallet
+                </button>
+                {showSwitchHelp ? (
+                  <p className="wal-manual-help" role="status">
+                    Open your wallet and set the network for this site to BNB
+                    Smart Chain (BSC): in MetaMask, click the site icon at the
+                    top, then the network name, then select BNB Smart Chain.
+                    This site never changes your wallet network for you.
+                  </p>
+                ) : null}
+              </div>
             ) : explorerUrl ? (
               <a
                 className="btn btn-ghost"

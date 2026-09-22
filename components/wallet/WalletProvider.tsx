@@ -5,6 +5,7 @@ import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { walletConfig } from "../../lib/wallet/config";
+import { ProviderDiagnostics } from "./ProviderDiagnostics";
 import { WalletModal } from "./WalletModal";
 import { WalletUIProvider } from "./WalletUI";
 
@@ -28,6 +29,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         <WalletUIProvider>
           {children}
           <WalletModal />
+          <ProviderDiagnostics />
         </WalletUIProvider>
       </QueryClientProvider>
     </WagmiProvider>

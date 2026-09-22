@@ -1,26 +1,50 @@
 "use client";
 
 import { networkLabel } from "../../lib/wallet/chains";
+import type { WalletNetworkStatus } from "../../lib/wallet/network";
 import { useWalletNetwork } from "./useWalletNetwork";
 
-type NetStateValue = "disconnected" | "connected" | "testnet" | "wrong";
+export type NetStateValue = "disconnected" | "connected" | "testnet" | "wrong";
 
-export function NetState() {
-  const network = useWalletNetwork();
+/**
+ * Authoritative pill mapping — the ONLY place wallet status becomes banner
+ * text/state. `connected` renders exclusively for a live-verified mainnet
+ * status; every other status (including disconnected and unknown) renders a
+ * non-connected pill.
+ */
+export function netStateForStatus(status: WalletNetworkStatus): NetStateValue {
+  if (status === "mainnet") return "connected";
+  if (status === "testnet") return "testnet";
+  if (status === "wrong") return "wrong";
+  return "disconnected";
+}
 
-  let state: NetStateValue = "disconnected";
-  if (network.status === "mainnet") state = "connected";
-  else if (network.status === "testnet") state = "testnet";
-  else if (network.status === "wrong") state = "wrong";
-
+export function NetStatePill({
+  state,
+  title,
+}: {
+  state: NetStateValue;
+  title?: string;
+}) {
   return (
     <span
       className="net-state"
       role="status"
       data-netstate={state}
-      title={network.isConnected ? networkLabel(network.chainId) : undefined}
+      title={title}
     >
       <span className="ns-txt"></span>
     </span>
+  );
+}
+
+export function NetState() {
+  const network = useWalletNetwork();
+
+  return (
+    <NetStatePill
+      state={netStateForStatus(network.status)}
+      title={network.isConnected ? networkLabel(network.chainId) : undefined}
+    />
   );
 }

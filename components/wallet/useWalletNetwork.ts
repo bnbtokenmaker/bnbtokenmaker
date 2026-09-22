@@ -1,105 +1,242 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useConnection } from "wagmi";
 
 import {
-  classifyWalletNetwork,
-  type WalletNetworkStatus,
+  resolveDisplayNetwork,
 } from "../../lib/wallet/network";
+import {
+  clearProviderSession,
+  ensureSessionFromConnection,
+  getProviderSession,
+  isSessionProviderLive,
+  reconcileSessionOnConnectionChange,
+  verifyProviderSession,
+  type SessionConnectorLike,
+} from "../../lib/wallet/session";
+import { devLog, devRefId } from "../../lib/wallet/devlog";
+import { parseChainId } from "../../lib/wallet/switch";
 
-type Eip1193ProviderLike = {
+type ConnectorLike = SessionConnectorLike & {
+  uid: string;
+};
+
+type SessionProviderLike = {
   on?: (event: string, handler: (value: unknown) => void) => void;
   removeListener?: (event: string, handler: (value: unknown) => void) => void;
 };
 
-function toChainId(value: unknown): number | null {
-  if (typeof value === "string") {
-    const parsed = value.startsWith("0x")
-      ? Number.parseInt(value, 16)
-      : Number.parseInt(value, 10);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  return null;
-}
+/** Live re-verification cadence for the pinned provider session. */
+const REVERIFY_POLL_MS = 5000;
 
 /**
- * Single source of truth for the connected wallet's network.
+ * Single source of truth for the connected wallet's network — FAIL CLOSED.
  *
- * The value is derived from the chain of the connector/provider that owns the
- * connected account (never from the configured/default chain). On top of
- * wagmi's reactive connection state we re-read `eth_chainId` straight from the
- * active provider and listen to its `chainChanged` event, so the UI reflects a
- * wallet network switch immediately and cannot drift from the real provider.
+ * Truth comes ONLY from the session-pinned EIP-6963 provider object,
+ * re-verified live (same object `===`, expected account present, fresh
+ * `eth_chainId`) on connect, on every wagmi cache move, on a poll cadence,
+ * and whenever the page regains visibility/focus — plus its
+ * `chainChanged`/`accountsChanged` events.
+ *
+ * Display state is derived through `resolveDisplayNetwork`, so a stale
+ * object, a superseded/re-instantiated provider, a disconnected connector,
+ * or any unknown live state renders Wrong Network (never BSC Connected) and
+ * stays deployment-ineligible. Verified readings are keyed by
+ * `connectorUid|address`, so a disconnect, account switch, or connector
+ * rotation instantly invalidates old truth without relying on effect
+ * cleanups.
  */
 export function useWalletNetwork() {
   const connection = useConnection();
-  const connector = connection.connector;
-  const [providerChain, setProviderChain] = useState<{
+  const connector = connection.connector as ConnectorLike | undefined;
+  const address =
+    typeof connection.address === "string" ? connection.address : undefined;
+  const cachedChainId =
+    typeof connection.chainId === "number" ? connection.chainId : null;
+
+  const sessionKey =
+    connection.isConnected && connector && address
+      ? `${connector.uid}|${address.toLowerCase()}`
+      : null;
+
+  const [verified, setVerified] = useState<{
+    key: string;
     uid: string;
     chainId: number;
   } | null>(null);
+  // Generation guard for overlapping async verifications (effects only).
+  const genRef = useRef(0);
+
+  // A session is only meaningful while connected: any observed wagmi
+  // disconnect (user action, wallet-side `disconnect` event on network
+  // change, revoked permissions) drops the pinned session so no later
+  // render can derive truth from a stale pre-disconnect provider.
+  const wagmiConnected = connection.isConnected;
+  useEffect(() => {
+    reconcileSessionOnConnectionChange(wagmiConnected);
+  }, [wagmiConnected]);
+
+  const refresh = useCallback(async (): Promise<number | null> => {
+    if (!connector || !address || !sessionKey) return null;
+    const key = sessionKey;
+    try {
+      const result = await verifyProviderSession(connector, {
+        expectedAddress: address,
+      });
+      setVerified({ key, uid: connector.uid, chainId: result.chainId });
+      return result.chainId;
+    } catch {
+      setVerified((prev) => (prev && prev.key === key ? null : prev));
+      return null;
+    }
+  }, [connector, address, sessionKey]);
 
   useEffect(() => {
-    if (!connection.isConnected || !connector) return;
-
+    if (!sessionKey || !connector || !address) return;
+    const active = connector;
+    const expected = address;
+    const key = sessionKey;
+    genRef.current += 1;
+    const gen = genRef.current;
+    const isCurrent = () => genRef.current === gen;
     let cancelled = false;
-    let provider: Eip1193ProviderLike | undefined;
-    const uid = connector.uid;
+    let sessionProvider: SessionProviderLike | undefined;
 
-    const read = async () => {
+    const verifySnapshot = async () => {
       try {
-        const id = await connector.getChainId();
-        if (!cancelled && Number.isFinite(id)) {
-          setProviderChain({ uid, chainId: id });
+        // Supersession check first: the connector must still expose the
+        // exact pinned object (catches re-instantiation / rotated
+        // announcements). A rotated object is rebound only when it holds
+        // the expected account; otherwise the session stays dead.
+        if (!(await isSessionProviderLive(active))) {
+          const existing = getProviderSession();
+          if (!existing || existing.connectorUid !== active.uid) {
+            await ensureSessionFromConnection(active, expected);
+          } else {
+            clearProviderSession();
+            await ensureSessionFromConnection(active, expected);
+          }
         }
-      } catch {
-        /* provider not available yet */
+        const result = await verifyProviderSession(active, {
+          expectedAddress: expected,
+        });
+        devLog(
+          "reverify-ok",
+          `chain=${result.chainId} ref=${devRefId(result.provider)} uid=${active.uid}`
+        );
+        return { chainId: result.chainId, provider: result.provider };
+      } catch (error) {
+        devLog(
+          "reverify-failed",
+          `${error instanceof Error ? error.name : String(error)} uid=${active.uid}`
+        );
+        return null;
       }
     };
-    void read();
 
     const onChainChanged = (value: unknown) => {
-      const id = toChainId(value);
-      if (id !== null) setProviderChain({ uid, chainId: id });
+      if (!isCurrent()) return;
+      const id = parseChainId(value);
+      if (id === null) return;
+      devLog("chainChanged", `chain=${id} uid=${active.uid}`);
+      // The event source is the pinned object itself; narrow the existing
+      // verified record for this generation (a full verify follows on poll).
+      setVerified((prev) =>
+        prev && prev.key === key ? { ...prev, chainId: id } : prev
+      );
+    };
+    const onAccountsChanged = (value: unknown) => {
+      if (!isCurrent()) return;
+      const list = Array.isArray(value)
+        ? value.map((entry) => String(entry).toLowerCase())
+        : [];
+      devLog("accountsChanged", `count=${list.length} uid=${active.uid}`);
+      if (!list.includes(expected.toLowerCase())) {
+        const session = getProviderSession();
+        if (session && session.connectorUid === active.uid) {
+          clearProviderSession();
+        }
+        setVerified((prev) => (prev && prev.key === key ? null : prev));
+      }
     };
 
     void (async () => {
-      try {
-        provider = (await connector.getProvider()) as
-          | Eip1193ProviderLike
-          | undefined;
-        provider?.on?.("chainChanged", onChainChanged);
-      } catch {
-        /* provider not available yet */
+      const snapshot = await verifySnapshot();
+      if (cancelled || !isCurrent()) return;
+      if (!snapshot) {
+        setVerified((prev) => (prev && prev.key === key ? null : prev));
+        return;
       }
+      setVerified({ key, uid: active.uid, chainId: snapshot.chainId });
+      sessionProvider = snapshot.provider as SessionProviderLike;
+      sessionProvider?.on?.("chainChanged", onChainChanged);
+      sessionProvider?.on?.("accountsChanged", onAccountsChanged);
     })();
+
+    const timer = setInterval(() => {
+      void (async () => {
+        const snapshot = await verifySnapshot();
+        if (cancelled || !isCurrent()) return;
+        if (!snapshot) {
+          setVerified((prev) => (prev && prev.key === key ? null : prev));
+          return;
+        }
+        setVerified({ key, uid: active.uid, chainId: snapshot.chainId });
+      })();
+    }, REVERIFY_POLL_MS);
+    const onVisible = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
+      void (async () => {
+        const snapshot = await verifySnapshot();
+        if (cancelled || !isCurrent()) return;
+        if (!snapshot) {
+          setVerified((prev) => (prev && prev.key === key ? null : prev));
+          return;
+        }
+        setVerified({ key, uid: active.uid, chainId: snapshot.chainId });
+      })();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
 
     return () => {
       cancelled = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
       try {
-        provider?.removeListener?.("chainChanged", onChainChanged);
+        sessionProvider?.removeListener?.("chainChanged", onChainChanged);
+        sessionProvider?.removeListener?.("accountsChanged", onAccountsChanged);
       } catch {
         /* ignore */
       }
     };
-  }, [connection.isConnected, connector]);
+    // cachedChainId is an intentional re-read trigger: whenever wagmi's cache
+    // moves, the pinned provider is queried again so a stale/optimistic cache
+    // can never flip the UI without live confirmation.
+  }, [sessionKey, cachedChainId, connector, address]);
 
-  const providerChainId =
-    connector && providerChain && providerChain.uid === connector.uid
-      ? providerChain.chainId
-      : null;
-  const chainId = providerChainId ?? connection.chainId ?? null;
-  const status: WalletNetworkStatus = classifyWalletNetwork(
-    connection.isConnected,
-    chainId
-  );
+  const effective =
+    verified && sessionKey && verified.key === sessionKey ? verified : null;
+  const display = resolveDisplayNetwork({
+    wagmiConnected: connection.isConnected,
+    connectorUid: connector?.uid ?? null,
+    sessionValid: effective !== null,
+    verifiedUid: effective?.uid ?? null,
+    liveChainId: effective?.chainId ?? null,
+  });
 
   return {
-    status,
-    chainId,
+    status: display.status,
+    chainId: display.chainId,
     isConnected: connection.isConnected,
-    connector,
+    connector: connection.connector,
+    refresh,
   };
 }
