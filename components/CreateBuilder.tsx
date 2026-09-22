@@ -32,6 +32,7 @@ import type { FeatureSelection, PresetId } from "../lib/pricing/presets";
 import { DRAFT_DEFAULTS, SUPPLY_QUICK_PRESETS, formatSupplyInput } from "../lib/draft";
 import type { DraftConfig } from "../lib/draft";
 import { useSupplyField } from "./useSupplyField";
+import { DeployFlow } from "./DeployFlow";
 
 const SUMMARY_LABEL: Record<PaidFeatureId, string> = {
   burn: "Burnable",
@@ -211,7 +212,7 @@ export function SummaryActions({
           ? "Connect your wallet to continue."
           : needsNetworkSwitch
             ? `Wrong Network \u00b7 ${wrongDetail}`
-            : "Wallet connected. Token deployment is not enabled yet."}
+            : "Wallet connected. Continue with Review & Deploy below."}
       </p>
     </div>
   );
@@ -720,7 +721,7 @@ export function CreateBuilder({
           </details>
         </section>
 
-        <section className="form-box" style={{ marginBottom: 0 }}>
+        <section className="form-box">
           <div className="form-sec-h">
             <span className="idx">03</span>
             <h2>Before you deploy</h2>
@@ -738,6 +739,16 @@ export function CreateBuilder({
             </ul>
           </div>
         </section>
+
+        <DeployFlow
+          tokenName={name}
+          tokenSymbol={sym}
+          decimals={dec}
+          supply={supply}
+          feats={feats}
+          maxTxPercent={xMaxbuy}
+          maxWalletPercent={xMaxwal}
+        />
       </div>
 
       <aside className="summary-wrap" aria-label="Deployment summary">
