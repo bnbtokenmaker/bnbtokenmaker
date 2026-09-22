@@ -81,6 +81,14 @@ jobs:
           test -f deploy/server.js
           static_files="$(find deploy/.next/static -type f | wc -l | tr -d ' ')"
           [ "$static_files" -gt 0 ] || { echo "no static assets in artifact"; exit 1; }
+          # Critical public assets must survive every build: a missing file
+          # here fails the deploy instead of silently shipping a broken site
+          # (this is how the IndexNow key and favicon were lost before).
+          for asset in public/logo-bnb-token-maker.svg public/logo-bnb-chain.svg public/d2b4222247f04b74b762efb0ec56a7f3.txt public/favicon.ico; do
+            [ -f "deploy/$asset" ] || { echo "missing public asset in artifact: $asset"; exit 1; }
+            [ -s "deploy/$asset" ] || { echo "public asset is empty in artifact: $asset"; exit 1; }
+          done
+          echo "OK: required public assets present in artifact"
           grep -q '"output":"standalone"' deploy/server.js
           # Contract-dev files must never leak into the runtime-only artifact.
           for leaked in deploy/contracts deploy/hardhat.config.ts deploy/hardhat.config.js; do
@@ -103,11 +111,14 @@ jobs:
             sleep 1
           done
           [ "$ready" = "1" ] || { echo "server did not start"; cat /tmp/next.log; exit 1; }
-          for path in / /create /features /blog/how-to-create-a-bep20-token /sitemap.xml /robots.txt /llms.txt; do
+          for path in / /create /features /blog/how-to-create-a-bep20-token /sitemap.xml /robots.txt /llms.txt /favicon.ico /d2b4222247f04b74b762efb0ec56a7f3.txt; do
             code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3911$path")"
             [ "$code" = "200" ] || { echo "FAILED $path -> $code"; exit 1; }
             echo "200 $path"
           done
+          key="$(curl -s http://127.0.0.1:3911/d2b4222247f04b74b762efb0ec56a7f3.txt)"
+          [ "$key" = "d2b4222247f04b74b762efb0ec56a7f3" ] || { echo "IndexNow key body mismatch: [$key]"; exit 1; }
+          echo "200 IndexNow key body exact"
           missing="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3911/definitely-missing-page)"
           [ "$missing" = "404" ] || { echo "expected 404, got $missing"; exit 1; }
           echo "404 /definitely-missing-page"

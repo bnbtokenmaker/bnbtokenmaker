@@ -39,6 +39,12 @@ export const metadata: Metadata = {
   title: "BNB Token Maker — Create a BEP-20 Token on BNB Smart Chain",
   description:
     "Create a BEP-20 token on BNB Smart Chain in minutes. A no-code generator with full control over supply, ownership and security. No smart contracts required.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "16x16 32x32" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+  },
   robots: {
     index: true,
     follow: true,
