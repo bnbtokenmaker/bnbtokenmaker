@@ -8,7 +8,7 @@ import {
 export const metadata: Metadata = {
   title: "Privacy Policy | BNB Token Maker",
   description: "How information is handled when you use BNB Token Maker.",
-  alternates: { canonical: "/privacy" },
+  alternates: { canonical: "https://bnbtokenmaker.com/privacy" },
   openGraph: {
     title: "Privacy Policy | BNB Token Maker",
     description: "How information is handled when you use BNB Token Maker.",

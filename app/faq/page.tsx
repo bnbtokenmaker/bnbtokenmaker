@@ -7,7 +7,7 @@ import { FaqFilter } from "../../components/FaqFilter";
 export const metadata: Metadata = {
   title: "BEP-20 Token Generator FAQ | BNB Token Maker",
   description: "Frequently asked questions about creating BEP-20 tokens on BNB Smart Chain with BNB Token Maker: token details, features, fees, wallet security and more.",
-  alternates: { canonical: "/faq" },
+  alternates: { canonical: "https://bnbtokenmaker.com/faq" },
   openGraph: {
     title: "BEP-20 Token Generator FAQ | BNB Token Maker",
     description: "Frequently asked questions about creating BEP-20 tokens on BNB Smart Chain with BNB Token Maker: token details, features, fees, wallet security and more.",

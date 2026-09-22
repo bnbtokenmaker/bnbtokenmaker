@@ -9,12 +9,12 @@ import { GUIDE_HOWTO } from "../../lib/schema";
 import { GUIDE_BREAD } from "../../lib/schema";
 
 export const metadata: Metadata = {
-  title: "How to Create a BEP-20 Token on BNB Smart Chain | BNB Token Maker",
+  title: "Create a BEP-20 Token on BNB Smart Chain | BNB Token Maker",
   description: "Step-by-step guide to creating a BEP-20 token: what you need, the five steps from configuration to deployment, and common mistakes to avoid. No Solidity required.",
   robots: "index, follow, max-image-preview:large",
   alternates: { canonical: "https://bnbtokenmaker.com/create-bep20-token" },
   openGraph: {
-    title: "How to Create a BEP-20 Token on BNB Smart Chain | BNB Token Maker",
+    title: "Create a BEP-20 Token on BNB Smart Chain | BNB Token Maker",
     description: "Step-by-step guide to creating a BEP-20 token: what you need, the five steps from configuration to deployment, and common mistakes to avoid. No Solidity required.",
     url: "https://bnbtokenmaker.com/create-bep20-token",
     siteName: "BNB Token Maker",
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "How to Create a BEP-20 Token on BNB Smart Chain | BNB Token Maker",
+    title: "Create a BEP-20 Token on BNB Smart Chain | BNB Token Maker",
     description: "Step-by-step guide to creating a BEP-20 token: what you need, the five steps from configuration to deployment, and common mistakes to avoid. No Solidity required.",
   },
 };

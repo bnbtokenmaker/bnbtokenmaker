@@ -14,7 +14,7 @@ import { toPricingConfigDto, validateConfig } from "../../lib/pricing";
 export const metadata: Metadata = {
   title: "Create BEP-20 Token — BNB Token Maker",
   description: "Create a BEP-20 token on BNB Smart Chain. Set the name, supply and controls, choose your features, connect your wallet and deploy — no code required.",
-  alternates: { canonical: "/create" },
+  alternates: { canonical: "https://bnbtokenmaker.com/create" },
   openGraph: {
     title: "Create BEP-20 Token — BNB Token Maker",
     description: "Create a BEP-20 token on BNB Smart Chain. Set the name, supply and controls, choose your features, connect your wallet and deploy — no code required.",

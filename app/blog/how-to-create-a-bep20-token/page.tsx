@@ -5,12 +5,12 @@ import { BPST_ARTICLE } from "../../../lib/schema";
 import { BPST_WEBSITE } from "../../../lib/schema";
 
 export const metadata: Metadata = {
-  title: "How to Create a BEP-20 Token on BNB Smart Chain | BNB Token Maker",
+  title: "How to Create a BEP-20 Token: Step-by-Step Guide | BNB Token Maker",
   description: "A practical guide to the steps involved in configuring and deploying a BEP-20 token on BNB Smart Chain: token details, contract features, fees, deployment and security.",
   robots: "index, follow, max-image-preview:large",
   alternates: { canonical: "https://bnbtokenmaker.com/blog/how-to-create-a-bep20-token" },
   openGraph: {
-    title: "How to Create a BEP-20 Token on BNB Smart Chain | BNB Token Maker",
+    title: "How to Create a BEP-20 Token: Step-by-Step Guide | BNB Token Maker",
     description: "A practical guide to the steps involved in configuring and deploying a BEP-20 token on BNB Smart Chain: token details, contract features, fees, deployment and security.",
     url: "https://bnbtokenmaker.com/blog/how-to-create-a-bep20-token",
     siteName: "BNB Token Maker",
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "How to Create a BEP-20 Token on BNB Smart Chain | BNB Token Maker",
+    title: "How to Create a BEP-20 Token: Step-by-Step Guide | BNB Token Maker",
     description: "A practical guide to the steps involved in configuring and deploying a BEP-20 token on BNB Smart Chain: token details, contract features, fees, deployment and security.",
   },
 };

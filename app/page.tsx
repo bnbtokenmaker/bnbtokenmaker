@@ -12,7 +12,7 @@ import {
 export const metadata: Metadata = {
   title: "BNB Token Maker — Create a BEP-20 Token on BNB Smart Chain",
   description: "Create a BEP-20 token on BNB Smart Chain without writing Solidity. Configure the name, supply and contract controls, connect your wallet and deploy — non-custodial and ready in minutes.",
-  alternates: { canonical: "/" },
+  alternates: { canonical: "https://bnbtokenmaker.com/" },
   openGraph: {
     title: "Create a BEP-20 Token on BNB Smart Chain | BNB Token Maker",
     description: "Create a BEP-20 token on BNB Smart Chain without writing Solidity. Configure the name, supply and contract controls, connect your wallet and deploy — non-custodial and ready in minutes.",

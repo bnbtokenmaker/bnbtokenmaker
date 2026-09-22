@@ -6,7 +6,7 @@ import { HOW_WEBSITE } from "../../lib/schema";
 export const metadata: Metadata = {
   title: "How to Create a BEP-20 Token | BNB Token Maker",
   description: "How to create a BEP-20 token on BNB Smart Chain with BNB Token Maker: configure the details, choose your features, connect your wallet, review and deploy. Non-custodial, no code.",
-  alternates: { canonical: "/how-it-works" },
+  alternates: { canonical: "https://bnbtokenmaker.com/how-it-works" },
   openGraph: {
     title: "How to Create a BEP-20 Token | BNB Token Maker",
     description: "How to create a BEP-20 token on BNB Smart Chain with BNB Token Maker: configure the details, choose your features, connect your wallet, review and deploy. Non-custodial, no code.",

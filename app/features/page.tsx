@@ -8,7 +8,7 @@ import {
 export const metadata: Metadata = {
   title: "BEP-20 Token Features | BNB Token Maker",
   description: "BEP-20 token features explained: supply, transfer, access and ownership controls. See what ships in every BNB Token Maker contract and what you can add.",
-  alternates: { canonical: "/features" },
+  alternates: { canonical: "https://bnbtokenmaker.com/features" },
   openGraph: {
     title: "BEP-20 Token Features | BNB Token Maker",
     description: "BEP-20 token features explained: supply, transfer, access and ownership controls. See what ships in every BNB Token Maker contract and what you can add.",

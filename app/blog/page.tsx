@@ -7,7 +7,7 @@ import { BlogFilter } from "../../components/BlogFilter";
 export const metadata: Metadata = {
   title: "BEP-20 & BNB Smart Chain Guides | BNB Token Maker Blog",
   description: "Learn how BEP-20 tokens work, explore BNB Smart Chain token features, and read practical guides about creating and deploying tokens.",
-  alternates: { canonical: "/blog" },
+  alternates: { canonical: "https://bnbtokenmaker.com/blog" },
   openGraph: {
     title: "BEP-20 & BNB Smart Chain Guides | BNB Token Maker Blog",
     description: "Learn how BEP-20 tokens work, explore BNB Smart Chain token features, and read practical guides about creating and deploying tokens.",

@@ -7,7 +7,7 @@ import { DocsNav } from "../../components/DocsNav";
 export const metadata: Metadata = {
   title: "BNB Token Maker Documentation | BEP-20 Token Creator",
   description: "Documentation for creating and managing BEP-20 tokens on BNB Smart Chain with BNB Token Maker: token details, contract features, fees, deployment and ownership.",
-  alternates: { canonical: "/docs" },
+  alternates: { canonical: "https://bnbtokenmaker.com/docs" },
   openGraph: {
     title: "BNB Token Maker Documentation | BEP-20 Token Creator",
     description: "Documentation for creating and managing BEP-20 tokens on BNB Smart Chain with BNB Token Maker: token details, contract features, fees, deployment and ownership.",

@@ -93,6 +93,11 @@ export const LLMS_SECTIONS: ReadonlyArray<LlmsSection> = [
         desc: "Full walkthrough for creating a BEP-20 token.",
       },
       {
+        label: "BNB Token Generator",
+        path: "/bnb-token-generator",
+        desc: "What a BNB token generator does and how BNB relates to BEP-20.",
+      },
+      {
         label: "Create Token on BNB Chain",
         path: "/create-token-on-bnb-chain",
         desc: "Deploy a token on BNB Smart Chain, including the testnet flow.",
@@ -156,6 +161,31 @@ export const LLMS_SECTIONS: ReadonlyArray<LlmsSection> = [
         label: "Guide: Creating a BEP-20 Token",
         path: "/blog/how-to-create-a-bep20-token",
         desc: "The main comprehensive guide to creating a BEP-20 token.",
+      },
+    ],
+  },
+  {
+    heading: "Company & Policies",
+    items: [
+      {
+        label: "Contact",
+        path: "/contact",
+        desc: "Platform questions, technical support and security enquiries.",
+      },
+      {
+        label: "Terms of Service",
+        path: "/terms",
+        desc: "Terms governing access to and use of BNB Token Maker.",
+      },
+      {
+        label: "Privacy Policy",
+        path: "/privacy",
+        desc: "How information is handled when you use BNB Token Maker.",
+      },
+      {
+        label: "Disclaimer",
+        path: "/disclaimer",
+        desc: "Disclaimers about token deployment and blockchain transactions.",
       },
     ],
   },

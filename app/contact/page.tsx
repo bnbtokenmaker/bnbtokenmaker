@@ -7,7 +7,7 @@ import { ContactForm } from "../../components/ContactForm";
 export const metadata: Metadata = {
   title: "Contact | BNB Token Maker",
   description: "Contact BNB Token Maker for platform questions, technical support, deployment issues and security enquiries.",
-  alternates: { canonical: "/contact" },
+  alternates: { canonical: "https://bnbtokenmaker.com/contact" },
   openGraph: {
     title: "Contact | BNB Token Maker",
     description: "Contact BNB Token Maker for platform questions, technical support, deployment issues and security enquiries.",
