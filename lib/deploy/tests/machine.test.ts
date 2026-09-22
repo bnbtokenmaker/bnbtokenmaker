@@ -168,6 +168,31 @@ describe("deploy state machine — error and retry safety", () => {
     );
   });
 
+  it("success requires a confirmed successful receipt (never before)", () => {
+    // RECEIPT_OK is legal ONLY from confirming — no earlier phase can
+    // present a success state.
+    for (const phase of [
+      "idle",
+      "review",
+      "validating",
+      "awaiting_wallet",
+      "broadcasting",
+      "error",
+    ] as const) {
+      expectIllegal({ phase, txHash: null, errorCode: null }, { type: "RECEIPT_OK" });
+    }
+    expectIllegal(
+      { phase: "broadcasting", txHash: HASH, errorCode: null },
+      { type: "RECEIPT_OK" }
+    );
+    const ok = transition(
+      { phase: "confirming", txHash: HASH, errorCode: null },
+      { type: "RECEIPT_OK" }
+    );
+    assert.equal(ok.phase, "success");
+    assert.equal(ok.txHash, HASH);
+  });
+
   it("a second deployment requires a deliberate NEW_DEPLOYMENT action", () => {
     const after = transition(
       { phase: "success", txHash: HASH, errorCode: null },

@@ -122,6 +122,23 @@ type GasSnapshot = {
   balanceWei: bigint;
 };
 
+/** Server-quote reference price label (shared by preview + review so the
+ * wording stays accurate regardless of selected features). */
+export const PRODUCT_PRICE_LABEL = "Product price (server quote)";
+
+/**
+ * Success-announcement guard for the scroll/focus safety net: true only the
+ * first time a confirmed success with a given hash is observed — never
+ * before receipt, never twice for the same transaction.
+ */
+export function shouldScrollToSuccess(
+  phase: string,
+  txHash: string | null,
+  seenTxHash: string | null
+): boolean {
+  return phase === "success" && txHash !== null && seenTxHash !== txHash;
+}
+
 function FeatureSummaryLabel({ id }: { id: string }) {
   const labels: Record<string, string> = {
     burn: "Burnable",
@@ -158,6 +175,8 @@ export function DeployFlow({
   const [copied, setCopied] = useState<string | null>(null);
   const attemptLock = useRef(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const successRef = useRef<HTMLDivElement | null>(null);
+  const announcedRef = useRef<string | null>(null);
 
   const featureIds = useMemo(() => selectedFeatureIds(feats), [feats]);
   const onTestnet = isConnected && network.status === "testnet";
@@ -672,6 +691,28 @@ export function DeployFlow({
     router.push("/create");
   }, [router]);
 
+  // Safety net only: after a CONFIRMED receipt, bring a possibly
+  // below-the-fold success panel into view once per transaction. Layout
+  // compactness (CSS) is the primary mechanism; this never fires before
+  // success and never repeats for the same hash. DOM-only, no setState.
+  useEffect(() => {
+    if (!shouldScrollToSuccess(machine.phase, machine.txHash, announcedRef.current)) {
+      return;
+    }
+    announcedRef.current = machine.txHash;
+    const node = successRef.current;
+    if (!node || typeof window === "undefined") return;
+    const reduced =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    try {
+      node.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "nearest" });
+      node.focus({ preventScroll: true });
+    } catch {
+      /* older browsers: layout already shows the panel */
+    }
+  }, [machine.phase, machine.txHash]);
+
   const locked = isDeployLocked(machine);
   const submitted = hasSubmittedTx(machine);
   const errorInfo =
@@ -783,7 +824,7 @@ export function DeployFlow({
               </dd>
             </div>
             <div>
-              <dt>Standard price (server quote)</dt>
+              <dt>{PRODUCT_PRICE_LABEL}</dt>
               <dd>
                 {quoteLoading
                   ? "Fetching…"
@@ -851,6 +892,85 @@ export function DeployFlow({
             </div>
           </div>
           <div className="deploy-panel deploy-card" aria-label="Deployment">
+            {machine.phase === "success" && deployedToken ? (
+              <div
+                className="deploy-success"
+                role="status"
+                ref={successRef}
+                tabIndex={-1}
+                aria-label="Token deployed successfully"
+              >
+                <h3>
+                  <i className="fa-solid fa-circle-check" aria-hidden="true"></i>Token deployed
+                  successfully
+                </h3>
+                <p className="deploy-success-token">
+                  {tokenNameView} · {tokenSymbolView}
+                </p>
+                <dl className="deploy-review">
+                  <div>
+                    <dt>Contract</dt>
+                    <dd>
+                      <code className="mono">{deployedToken}</code>{" "}
+                      <button
+                        type="button"
+                        className="linklike"
+                        aria-label="Copy contract address"
+                        onClick={() => void copyText("token", deployedToken)}
+                      >
+                        {copied === "token" ? "Copied" : "Copy"}
+                      </button>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Transaction</dt>
+                    <dd>
+                      <code className="mono">{shortenTxHash(machine.txHash ?? "")}</code>{" "}
+                      <button
+                        type="button"
+                        className="linklike"
+                        aria-label="Copy transaction hash"
+                        onClick={() => void copyText("tx", machine.txHash ?? "")}
+                      >
+                        {copied === "tx" ? "Copied" : "Copy"}
+                      </button>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Network</dt>
+                    <dd>BNB Smart Chain Testnet (97)</dd>
+                  </div>
+                </dl>
+                <div className="deploy-actions deploy-success-actions">
+                  {explorerTokenPageUrl(deployedToken) && (
+                    <a
+                      className="btn btn-dark btn-deploy"
+                      href={explorerTokenPageUrl(deployedToken) ?? ""}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View contract on explorer
+                    </a>
+                  )}
+                  <span className="deploy-actions-row">
+                    {machine.txHash && explorerTxUrl(machine.txHash) && (
+                      <a
+                        className="btn btn-ghost"
+                        href={explorerTxUrl(machine.txHash) ?? ""}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        View transaction
+                      </a>
+                    )}
+                    <button type="button" className="btn btn-ghost" onClick={createAnotherToken}>
+                      Create another token
+                    </button>
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <>
             <div className="deploy-status" role="status" aria-live="polite">
               <span
                 className={`deploy-phase deploy-phase-${machine.phase}`}
@@ -889,7 +1009,7 @@ export function DeployFlow({
               <h3 className="deploy-h">Pricing</h3>
               <dl className="deploy-review">
                 <div>
-                  <dt>Standard price (server quote)</dt>
+                  <dt>{PRODUCT_PRICE_LABEL}</dt>
                   <dd>
                     {quoteLoading ? (
                       "Fetching…"
@@ -967,65 +1087,6 @@ export function DeployFlow({
             </div>
           )}
 
-          {machine.phase === "success" && deployedToken ? (
-            <div className="deploy-success" role="status">
-              <h3>
-                <i className="fa-solid fa-circle-check" aria-hidden="true"></i>Token deployed
-                successfully
-              </h3>
-              <dl className="deploy-review">
-                <div>
-                  <dt>Token</dt>
-                  <dd>
-                    {tokenNameView} · {tokenSymbolView}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Network</dt>
-                  <dd>BNB Smart Chain Testnet (97)</dd>
-                </div>
-                <div>
-                  <dt>Contract address</dt>
-                  <dd>
-                    <code className="mono">{deployedToken}</code>{" "}
-                    <button
-                      type="button"
-                      className="linklike"
-                      aria-label="Copy contract address"
-                      onClick={() => void copyText("token", deployedToken)}
-                    >
-                      {copied === "token" ? "Copied" : "Copy"}
-                    </button>
-                  </dd>
-                </div>
-              </dl>
-              <div className="deploy-actions">
-                {explorerTokenPageUrl(deployedToken) && (
-                  <a
-                    className="btn btn-dark"
-                    href={explorerTokenPageUrl(deployedToken) ?? ""}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    View contract on explorer
-                  </a>
-                )}
-                {machine.txHash && explorerTxUrl(machine.txHash) && (
-                  <a
-                    className="btn btn-ghost"
-                    href={explorerTxUrl(machine.txHash) ?? ""}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    View transaction
-                  </a>
-                )}
-                <button type="button" className="btn btn-ghost" onClick={createAnotherToken}>
-                  Create another token
-                </button>
-              </div>
-            </div>
-          ) : (
             <div className="deploy-actions">
               {machine.phase === "error" && errorInfo ? (
                 <div className="deploy-error" role="alert">
@@ -1070,11 +1131,10 @@ export function DeployFlow({
                   </span>
                 </div>
               ) : (
-                machine.phase !== "success" && (
                   <>
                     <button
                       type="button"
-                      className="btn btn-primary"
+                      className="btn btn-primary btn-deploy"
                       disabled={locked || !reviewValid || !visibleQuote || gasFailed || !gasPreview}
                       onClick={() => void startDeployment()}
                       aria-describedby="deployHint"
@@ -1096,12 +1156,12 @@ export function DeployFlow({
                             ? gasFailed
                               ? "The network fee could not be estimated — resolve it above before deploying."
                               : "Estimating the network fee."
-                            : "Your wallet will ask you to confirm one transaction. Testnet fee: 0 BNB + gas."}
+                            : "Your wallet will ask you to confirm one transaction. Testnet fee: 0 BNB + gas. The gas figure above is an estimate — your wallet sets the final network fee."}
                     </p>
                   </>
-                )
               )}
             </div>
+              </>
           )}
           </div>
         </div>

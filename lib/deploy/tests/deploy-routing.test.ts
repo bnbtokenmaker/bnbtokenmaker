@@ -5,6 +5,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { SummaryActions } from "../../../components/CreateBuilder";
 import { DeployPage } from "../../../components/DeployPage";
+import {
+  PRODUCT_PRICE_LABEL,
+  shouldScrollToSuccess,
+} from "../../../components/DeployFlow";
 
 const noop = () => {};
 
@@ -49,6 +53,24 @@ describe("deploy routing — /create continuation CTA", () => {
     assert.ok(
       renderActions({ canContinue: false }).includes("Complete the token details above to continue.")
     );
+  });
+});
+
+describe("deploy polish — terminology and success announcement", () => {
+  it("labels the server quote as product price, never Standard", () => {
+    assert.equal(PRODUCT_PRICE_LABEL, "Product price (server quote)");
+    assert.ok(!PRODUCT_PRICE_LABEL.includes("Standard"));
+  });
+
+  it("announces success for scroll/focus only once per confirmed hash", () => {
+    const hash =
+      "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+    assert.equal(shouldScrollToSuccess("success", hash, null), true);
+    assert.equal(shouldScrollToSuccess("success", hash, hash), false);
+    assert.equal(shouldScrollToSuccess("success", null, null), false);
+    assert.equal(shouldScrollToSuccess("confirming", hash, null), false);
+    assert.equal(shouldScrollToSuccess("error", hash, null), false);
+    assert.equal(shouldScrollToSuccess("idle", null, null), false);
   });
 });
 
