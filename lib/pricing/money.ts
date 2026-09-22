@@ -67,6 +67,37 @@ export function weiToString(wei: bigint): string {
   return wei.toString();
 }
 
+/**
+ * Compact display formatting for small network-fee amounts (formatting
+ * only — bigint/wei stays authoritative everywhere else).
+ *
+ * Renders up to `maxDecimals` decimal places (default 6, round half up),
+ * trimming trailing zeros so dust amounts stay readable:
+ * 140088300000000 wei -> "0.00014", 50000000000000000 wei -> "0.05".
+ */
+export function formatWeiBnbCompact(wei: bigint, maxDecimals = 6): string {
+  if (wei < 0n) {
+    throw new PricingError("negative-bnb-amount", "cannot format a negative wei amount");
+  }
+  if (!Number.isInteger(maxDecimals) || maxDecimals < 0 || maxDecimals > MAX_BNB_DECIMALS) {
+    throw new PricingError(
+      "invalid-bnb-amount",
+      `maxDecimals must be an integer within 0..${MAX_BNB_DECIMALS}`
+    );
+  }
+  const scale = 10n ** BigInt(MAX_BNB_DECIMALS - maxDecimals);
+  const rounded = (wei + scale / 2n) / scale;
+  const unit = 10n ** BigInt(maxDecimals);
+  const whole = rounded / unit;
+  const frac = rounded % unit;
+  if (frac === 0n) return whole.toString();
+  const fracDigits = frac
+    .toString()
+    .padStart(maxDecimals, "0")
+    .replace(/0+$/u, "");
+  return `${whole.toString()}.${fracDigits}`;
+}
+
 export function parseWeiStringToBigint(input: string): bigint {
   if (typeof input !== "string" || input.length === 0) {
     throw new PricingError("invalid-config", "wei string must be a non-empty integer string");

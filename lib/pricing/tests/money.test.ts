@@ -6,6 +6,7 @@ import {
   MAX_BNB_DECIMALS,
   WEI_PER_BNB,
   formatWeiBnb,
+  formatWeiBnbCompact,
   formatWeiBnbDisplay,
   parseBnbToWei,
   parseWeiStringToBigint,
@@ -140,6 +141,34 @@ describe("formatWeiBnbDisplay", () => {
     assert.throws(
       () => formatWeiBnbDisplay(-1n),
       (error) => error instanceof PricingError && error.code === "negative-bnb-amount"
+    );
+  });
+});
+
+describe("formatWeiBnbCompact", () => {
+  it("preserves useful precision for small network fees", () => {
+    assert.equal(formatWeiBnbCompact(140088300000000n), "0.00014");
+    assert.equal(formatWeiBnbCompact(parseBnbToWei("0.0001400883")), "0.00014");
+    assert.equal(formatWeiBnbCompact(parseBnbToWei("0.050")), "0.05");
+    assert.equal(formatWeiBnbCompact(parseBnbToWei("1")), "1");
+    assert.equal(formatWeiBnbCompact(0n), "0");
+    assert.equal(formatWeiBnbCompact(1n), "0");
+  });
+
+  it("rounds half up at the precision boundary without floating point", () => {
+    assert.equal(formatWeiBnbCompact(1500n * 10n ** 9n), "0.000002");
+    assert.equal(formatWeiBnbCompact(1499n * 10n ** 9n), "0.000001");
+    assert.equal(formatWeiBnbCompact(parseBnbToWei("0.123456789")), "0.123457");
+  });
+
+  it("rejects negative wei and out-of-range precision", () => {
+    assert.throws(
+      () => formatWeiBnbCompact(-1n),
+      (error) => error instanceof PricingError && error.code === "negative-bnb-amount"
+    );
+    assert.throws(
+      () => formatWeiBnbCompact(1n, 19),
+      (error) => error instanceof PricingError && error.code === "invalid-bnb-amount"
     );
   });
 });

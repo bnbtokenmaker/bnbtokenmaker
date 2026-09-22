@@ -23,6 +23,7 @@ export {
   MAX_BNB_DECIMALS,
   WEI_PER_BNB,
   formatWeiBnb,
+  formatWeiBnbCompact,
   formatWeiBnbDisplay,
   isWei,
   parseBnbToWei,

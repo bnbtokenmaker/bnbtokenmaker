@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConnection } from "wagmi";
+import { useRouter } from "next/navigation";
 
 import { networkLabel } from "../lib/wallet/chains";
 import { shortenAddress } from "../lib/wallet/format";
 import { walletDeploymentEligibility } from "../lib/wallet/network";
 import { useWalletUI } from "./wallet/WalletUI";
 import { useWalletNetwork } from "./wallet/useWalletNetwork";
+import {
+  loadDeployDraft,
+  saveDeployDraft,
+} from "../lib/deploy/draft-transfer";
 import {
   calculatePlatformFee,
   formatWeiBnbDisplay,
@@ -32,7 +37,6 @@ import type { FeatureSelection, PresetId } from "../lib/pricing/presets";
 import { DRAFT_DEFAULTS, SUPPLY_QUICK_PRESETS, formatSupplyInput } from "../lib/draft";
 import type { DraftConfig } from "../lib/draft";
 import { useSupplyField } from "./useSupplyField";
-import { DeployFlow } from "./DeployFlow";
 
 const SUMMARY_LABEL: Record<PaidFeatureId, string> = {
   burn: "Burnable",
@@ -112,6 +116,13 @@ export type SummaryActionsProps = {
   wrongChainLabel: string | null;
   /** Test hook: render the manual-switch explanation open. */
   forceShowHelp?: boolean;
+  /**
+   * Continuation to the dedicated /deploy review page (same tab, Next
+   * routing — never a new tab/window). The button stays disabled until the
+   * caller sets `canContinue`.
+   */
+  canContinue?: boolean;
+  onContinue?: () => void;
   onConnect: () => void;
   onOpenAccount: () => void;
 };
@@ -135,6 +146,8 @@ export function SummaryActions({
   eligible,
   wrongChainLabel,
   forceShowHelp = false,
+  canContinue = false,
+  onContinue,
   onConnect,
   onOpenAccount,
 }: SummaryActionsProps) {
@@ -202,8 +215,9 @@ export function SummaryActions({
         className="btn btn-dark"
         type="button"
         id="createBtn"
-        disabled
+        disabled={!canContinue}
         data-deploy-eligible={eligible ? "true" : "false"}
+        onClick={onContinue}
       >
         Create Token
       </button>
@@ -212,7 +226,9 @@ export function SummaryActions({
           ? "Connect your wallet to continue."
           : needsNetworkSwitch
             ? `Wrong Network \u00b7 ${wrongDetail}`
-            : "Wallet connected. Continue with Review & Deploy below."}
+            : canContinue
+              ? "Ready — continue to review and deploy."
+              : "Complete the token details above to continue."}
       </p>
     </div>
   );
@@ -223,15 +239,20 @@ export function CreateBuilder({
   serverQuote,
   initialDraft = DRAFT_DEFAULTS,
 }: CreateBuilderProps) {
-  const [name, setName] = useState(() => initialDraft.name);
-  const [sym, setSym] = useState(() => initialDraft.symbol);
-  const [dec, setDec] = useState(() => initialDraft.decimals);
-  const [supply, setSupply] = useState(() => initialDraft.supply);
+  // Restore the tab-scoped draft carried back from /deploy ("Edit token").
+  // Absent on fresh tabs; cleared by "Create another token" for a clean start.
+  const [restoredDraft] = useState(() => loadDeployDraft());
+  const [name, setName] = useState(() => restoredDraft?.name ?? initialDraft.name);
+  const [sym, setSym] = useState(() => restoredDraft?.symbol ?? initialDraft.symbol);
+  const [dec, setDec] = useState(() => restoredDraft?.decimals ?? initialDraft.decimals);
+  const [supply, setSupply] = useState(() => restoredDraft?.supply ?? initialDraft.supply);
   const supplyRef = useRef<HTMLInputElement | null>(null);
   const supplyField = useSupplyField({ value: supply, setValue: setSupply, inputRef: supplyRef });
-  const [feats, setFeats] = useState<FeatureSelection>(DEFAULT_FEAT_SELECTION);
-  const [xMaxbuy, setXMaxbuy] = useState("1");
-  const [xMaxwal, setXMaxwal] = useState("2");
+  const [feats, setFeats] = useState<FeatureSelection>(
+    () => restoredDraft?.feats ?? DEFAULT_FEAT_SELECTION
+  );
+  const [xMaxbuy, setXMaxbuy] = useState(() => restoredDraft?.maxTxPercent ?? "1");
+  const [xMaxwal, setXMaxwal] = useState(() => restoredDraft?.maxWalletPercent ?? "2");
   const [inv, setInv] = useState<Inv>(CLEAR_INV);
 
   const {
@@ -329,6 +350,47 @@ export function CreateBuilder({
   function extraOk(v: string) {
     return v === "" || (!isNaN(parseFloat(v)) && parseFloat(v) > 0 && parseFloat(v) <= 100);
   }
+
+  // Continuation gate for the /deploy review page (lightweight client-side
+  // check only — /deploy revalidates through the token domain rules and the
+  // pre-transaction gates revalidate again with the live deployer).
+  const formValid = useMemo(() => {
+    const compact = name.replace(/\s+/g, " ").trim();
+    if (compact.length < 1 || compact.length > 40) return false;
+    try {
+      if (new TextEncoder().encode(compact).length > 64) return false;
+    } catch {
+      return false;
+    }
+    if (!/^[A-Z0-9]{1,11}$/.test(sym.trim().toUpperCase())) return false;
+    if (!decValid || !supplyValid) return false;
+    if (feats.blacklist && feats.whitelist) return false;
+    const pctOk = (v: string) =>
+      v !== "" && !isNaN(parseFloat(v)) && parseFloat(v) > 0 && parseFloat(v) <= 100;
+    if (feats.maxTx && !pctOk(xMaxbuy)) return false;
+    if (feats.maxWallet && !pctOk(xMaxwal)) return false;
+    return true;
+  }, [name, sym, decValid, supplyValid, feats, xMaxbuy, xMaxwal]);
+
+  const router = useRouter();
+
+  // Same-tab continuation: persist the non-secret draft for /deploy, then
+  // navigate with normal Next.js routing. Never a new tab or window.
+  const goToDeploy = useCallback(() => {
+    if (!formValid || !walletConnected) return;
+    saveDeployDraft({
+      version: 1,
+      name,
+      symbol: sym,
+      decimals: dec,
+      supply,
+      feats: { ...feats },
+      maxTxPercent: xMaxbuy,
+      maxWalletPercent: xMaxwal,
+      savedAt: Date.now(),
+    });
+    router.push("/deploy");
+  }, [formValid, walletConnected, name, sym, dec, supply, feats, xMaxbuy, xMaxwal, router]);
 
   const nameDisplay = name.trim() || "Untitled";
   const symDisplay = sym.toUpperCase() || "SYM";
@@ -721,7 +783,7 @@ export function CreateBuilder({
           </details>
         </section>
 
-        <section className="form-box">
+        <section className="form-box" style={{ marginBottom: 0 }}>
           <div className="form-sec-h">
             <span className="idx">03</span>
             <h2>Before you deploy</h2>
@@ -739,16 +801,6 @@ export function CreateBuilder({
             </ul>
           </div>
         </section>
-
-        <DeployFlow
-          tokenName={name}
-          tokenSymbol={sym}
-          decimals={dec}
-          supply={supply}
-          feats={feats}
-          maxTxPercent={xMaxbuy}
-          maxWalletPercent={xMaxwal}
-        />
       </div>
 
       <aside className="summary-wrap" aria-label="Deployment summary">
@@ -789,10 +841,11 @@ export function CreateBuilder({
                 </div>
               ))}
               <div className="price-total">
-                <span className="lbl">Platform fee</span>
+                <span className="lbl">Standard price</span>
                 <span className="val" id="pTotal" data-pricing-version={serverQuote.pricingVersion} data-quote-state="estimate">{formatWeiBnbDisplay(result.totalPlatformFeeWei)} BNB</span>
               </div>
-              <p className="gas-note" id="feeNote">Estimate — the exact amount is confirmed by the server when you deploy.</p>
+              <div className="price-row"><span>Testnet platform fee</span><span>0 BNB</span></div>
+              <p className="gas-note" id="feeNote">Reference product price — testnet deployments are fee-free (0 BNB platform fee + network gas).</p>
             </div>
           ) : (
             <div className="warn" id="pricingFault" role="alert">
@@ -809,6 +862,8 @@ export function CreateBuilder({
             wrongChainLabel={
               needsNetworkSwitch ? networkLabel(walletChainId) : null
             }
+            canContinue={formValid && walletConnected}
+            onContinue={goToDeploy}
             onConnect={() => openWallet("connect")}
             onOpenAccount={() => openWallet("account")}
           />

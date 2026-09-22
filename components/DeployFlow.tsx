@@ -25,6 +25,7 @@ import {
   type ReactNode,
 } from "react";
 import { useConnection } from "wagmi";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { createPublicClient, http } from "viem";
 import { bscTestnet } from "viem/chains";
@@ -45,7 +46,8 @@ import {
   ProviderChainReadError,
   WalletProviderUnavailableError,
 } from "../lib/wallet/switch";
-import { formatWeiBnbDisplay } from "../lib/pricing";
+import { formatWeiBnbCompact } from "../lib/pricing";
+import { clearDeployDraft } from "../lib/deploy/draft-transfer";
 import { selectedFeatureIds, type FeatureSelection } from "../lib/pricing/presets";
 import {
   TokenConfigError,
@@ -119,14 +121,6 @@ type GasSnapshot = {
   costWei: bigint;
   balanceWei: bigint;
 };
-
-function safeFormatWei(raw: string): string {
-  try {
-    return formatWeiBnbDisplay(BigInt(raw));
-  } catch {
-    return "—";
-  }
-}
 
 function FeatureSummaryLabel({ id }: { id: string }) {
   const labels: Record<string, string> = {
@@ -666,6 +660,18 @@ export function DeployFlow({
     dispatch({ type: "NEW_DEPLOYMENT" });
   }, [dispatch]);
 
+  const router = useRouter();
+
+  // Success-state exit: drop the just-deployed draft (so /create starts
+  // clean) and any pending-tx record, then return to /create same-tab.
+  const createAnotherToken = useCallback(() => {
+    clearDeployDraft();
+    clearPendingDeployment();
+    setRecovered(null);
+    setDeployedToken(null);
+    router.push("/create");
+  }, [router]);
+
   const locked = isDeployLocked(machine);
   const submitted = hasSubmittedTx(machine);
   const errorInfo =
@@ -694,13 +700,7 @@ export function DeployFlow({
   };
 
   return (
-    <section className="deploy" id="deploy" aria-label="Review and deploy">
-      <div className="form-sec-h">
-        <span className="idx">04</span>
-        <h2>Review &amp; Deploy</h2>
-        <span className="small-note">Check everything once — limits can&apos;t change later.</span>
-      </div>
-
+    <div className="deploy-flow">
       {/* Session recovery banner: never lost, never auto-resubmitted. */}
       {recovered && machine.phase === "idle" && (
         <div className="deploy-banner" role="status">
@@ -783,7 +783,7 @@ export function DeployFlow({
               </dd>
             </div>
             <div>
-              <dt>Platform price (server quote)</dt>
+              <dt>Standard price (server quote)</dt>
               <dd>
                 {quoteLoading
                   ? "Fetching…"
@@ -805,26 +805,8 @@ export function DeployFlow({
           )}
         </div>
       ) : (
-        <div className="deploy-card">
-          <div className="deploy-status" role="status" aria-live="polite">
-            <span
-              className={`deploy-phase deploy-phase-${machine.phase}`}
-              data-deploy-phase={machine.phase}
-            >
-              {phaseLabel[machine.phase]}
-            </span>
-            {locked && machine.phase === "awaiting_wallet" && (
-              <p className="deploy-muted">Confirm the transaction in your wallet.</p>
-            )}
-            {machine.phase === "confirming" && machine.txHash && (
-              <p className="deploy-muted">
-                Transaction submitted — waiting for on-chain confirmation. You can safely leave
-                this page open; the transaction link below stays valid.
-              </p>
-            )}
-          </div>
-
-          <div className="deploy-grid">
+        <div className="deploy-panels">
+          <div className="deploy-panel" aria-label="Review your token">
             <div>
               <h3 className="deploy-h">Token</h3>
               <dl className="deploy-review">
@@ -867,6 +849,25 @@ export function DeployFlow({
                 </p>
               )}
             </div>
+          </div>
+          <div className="deploy-panel deploy-card" aria-label="Deployment">
+            <div className="deploy-status" role="status" aria-live="polite">
+              <span
+                className={`deploy-phase deploy-phase-${machine.phase}`}
+                data-deploy-phase={machine.phase}
+              >
+                {phaseLabel[machine.phase]}
+              </span>
+              {locked && machine.phase === "awaiting_wallet" && (
+                <p className="deploy-muted">Confirm the transaction in your wallet.</p>
+              )}
+              {machine.phase === "confirming" && machine.txHash && (
+                <p className="deploy-muted">
+                  Transaction submitted — waiting for on-chain confirmation. You can safely leave
+                  this page open; the transaction link below stays valid.
+                </p>
+              )}
+            </div>
             <div>
               <h3 className="deploy-h">Network</h3>
               <dl className="deploy-review">
@@ -878,13 +879,17 @@ export function DeployFlow({
                   <dt>Chain ID</dt>
                   <dd>97</dd>
                 </div>
+                <div>
+                  <dt>Wallet</dt>
+                  <dd>{shortenAddress(address)}</dd>
+                </div>
               </dl>
             </div>
             <div>
               <h3 className="deploy-h">Pricing</h3>
               <dl className="deploy-review">
                 <div>
-                  <dt>Platform price (server quote)</dt>
+                  <dt>Standard price (server quote)</dt>
                   <dd>
                     {quoteLoading ? (
                       "Fetching…"
@@ -905,7 +910,7 @@ export function DeployFlow({
                     {gasLoading ? (
                       "Estimating…"
                     ) : gasPreview ? (
-                      <>~{safeFormatWei(gasPreview.costWei.toString())} BNB</>
+                      <>~{formatWeiBnbCompact(gasPreview.costWei)} BNB</>
                     ) : gasFailed ? (
                       "Could not be estimated"
                     ) : (
@@ -937,7 +942,6 @@ export function DeployFlow({
                 </button>
               )}
             </div>
-          </div>
 
           {machine.txHash && (
             <div className="deploy-tx" role="status">
@@ -1016,7 +1020,7 @@ export function DeployFlow({
                     View transaction
                   </a>
                 )}
-                <button type="button" className="btn btn-ghost" onClick={startNewDeployment}>
+                <button type="button" className="btn btn-ghost" onClick={createAnotherToken}>
                   Create another token
                 </button>
               </div>
@@ -1085,7 +1089,7 @@ export function DeployFlow({
                     </button>
                     <p className="deploy-muted" id="deployHint">
                       {!reviewValid
-                        ? "Complete the token details above to enable deployment."
+                        ? "Return to Create Token to complete the token details."
                         : !visibleQuote
                           ? "Waiting for the server price confirmation."
                           : !gasPreview
@@ -1099,8 +1103,9 @@ export function DeployFlow({
               )}
             </div>
           )}
+          </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }
