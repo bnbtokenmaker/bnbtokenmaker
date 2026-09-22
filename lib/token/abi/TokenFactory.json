@@ -1,0 +1,164 @@
+{
+  "name": "TokenFactory",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "sender",
+          "type": "address"
+        }
+      ],
+      "name": "OwnerMustBeSender",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "creator",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "symbol",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "decimals",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "initialSupply",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "features",
+          "type": "uint256"
+        }
+      ],
+      "name": "TokenCreated",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "string",
+                  "name": "name",
+                  "type": "string"
+                },
+                {
+                  "internalType": "string",
+                  "name": "symbol",
+                  "type": "string"
+                },
+                {
+                  "internalType": "uint8",
+                  "name": "decimals",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "initialSupply",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "address",
+                  "name": "owner",
+                  "type": "address"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "burnable",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "mintable",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "pausable",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "maxTxAmount",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "maxWalletAmount",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "blacklistEnabled",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "whitelistEnabled",
+                  "type": "bool"
+                }
+              ],
+              "internalType": "struct BNBTokenMakerToken.TokenConfig",
+              "name": "token",
+              "type": "tuple"
+            }
+          ],
+          "internalType": "struct TokenFactory.TokenParams",
+          "name": "params",
+          "type": "tuple"
+        }
+      ],
+      "name": "createToken",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ]
+}

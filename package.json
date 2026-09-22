@@ -12,7 +12,10 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:pricing": "tsx --test lib/pricing/tests/*.test.ts",
-    "test": "tsx --test lib/pricing/tests/*.test.ts lib/draft/tests/*.test.ts lib/wallet/tests/*.test.ts"
+    "test": "tsx --test lib/pricing/tests/*.test.ts lib/draft/tests/*.test.ts lib/wallet/tests/*.test.ts lib/token/tests/*.test.ts lib/deploy/tests/*.test.ts",
+    "contracts:compile": "hardhat compile",
+    "contracts:test": "hardhat test",
+    "contracts:artifacts": "hardhat compile && node scripts/sync-contract-artifacts.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.103.2",
@@ -25,11 +28,19 @@
     "wagmi": "^3.7.7"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-verify": "^2.0.14",
+    "@nomicfoundation/hardhat-viem": "^2.1.5",
+    "@openzeppelin/contracts": "^5.4.0",
+    "@types/chai": "^5.2.2",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "chai": "^5.2.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "hardhat": "^2.26.3",
+    "ts-node": "^10.9.2",
     "tsx": "^4.23.15",
     "typescript": "^5"
   }

@@ -30,5 +30,21 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    // Contract tooling has its own TS pipeline: ts-node typechecks these at
+    // `hardhat` runtime (CommonJS/Node10). The Next.js bundler-mode tsc run
+    // cannot resolve hardhat-viem's inferred contract types, so they are
+    // excluded here to keep `npm run typecheck` meaningful for the app.
+    "contracts",
+    "hardhat.config.ts",
+    "scripts/sync-contract-artifacts.mjs"
+  ],
+  // ts-node (Hardhat) compiles as CommonJS; Next.js builds are unaffected.
+  "ts-node": {
+    "compilerOptions": {
+      "module": "commonjs",
+      "moduleResolution": "node10"
+    }
+  }
 }

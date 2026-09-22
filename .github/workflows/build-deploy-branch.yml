@@ -29,6 +29,12 @@ jobs:
       - name: Pricing tests
         run: npm run test:pricing
 
+      - name: Contract compile (Solidity)
+        run: npm run contracts:compile
+
+      - name: Contract tests (Hardhat, in-process; no network, no secrets)
+        run: npm run contracts:test
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -73,6 +79,12 @@ jobs:
           static_files="$(find deploy/.next/static -type f | wc -l | tr -d ' ')"
           [ "$static_files" -gt 0 ] || { echo "no static assets in artifact"; exit 1; }
           grep -q '"output":"standalone"' deploy/server.js
+          # Contract-dev files must never leak into the runtime-only artifact.
+          for leaked in deploy/contracts deploy/hardhat.config.ts deploy/hardhat.config.js; do
+            [ ! -e "$leaked" ] || { echo "contract-dev file leaked: $leaked"; exit 1; }
+          done
+          sol_files="$(find deploy -name '*.sol' | wc -l | tr -d ' ')"
+          [ "$sol_files" = "0" ] || { echo "Solidity sources leaked into artifact:"; find deploy -name '*.sol'; exit 1; }
           echo "OK: artifact has zero native binaries and $(ls deploy/.next/static) (static_files: ${static_files})"
 
       - name: Smoke test standalone server on Linux

@@ -36,6 +36,10 @@ yarn-error.log*
 .env*
 !.env.example
 
+# hardhat contract tooling (build outputs; ABIs are synced to lib/token/abi/)
+contracts/.cache
+contracts/.artifacts
+
 # vercel
 .vercel
 
