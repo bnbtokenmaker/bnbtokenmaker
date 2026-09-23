@@ -16,9 +16,35 @@ import type { ChainReader } from "./verify";
 
 const RPC_TIMEOUT_MS = 15_000;
 
-function rpcUrl(): string {
+export class ServerRpcUnavailableError extends Error {
+  constructor() {
+    super("BSC_TESTNET_RPC_URL is not set");
+    this.name = "ServerRpcUnavailableError";
+  }
+}
+
+/**
+ * Resolve the server RPC URL.
+ *
+ * - An explicit `BSC_TESTNET_RPC_URL` always wins when set.
+ * - Outside production, a public Binance Testnet endpoint is used as a
+ *   local/test convenience so verification stays exercisable without keys.
+ * - In production the fallback is DISABLED (fail-closed): persistence must
+ *   run against a deterministic operator-configured endpoint, never a silent
+ *   public default. Callers map the thrown error to a sanitized 503 and
+ *   never write a deployment row.
+ */
+export function serverRpcUrl(): string {
   const configured = (process.env.BSC_TESTNET_RPC_URL ?? "").trim();
-  return configured || PHASE6B_RPC_DEFAULT;
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") {
+    throw new ServerRpcUnavailableError();
+  }
+  return PHASE6B_RPC_DEFAULT;
+}
+
+function rpcUrl(): string {
+  return serverRpcUrl();
 }
 
 let cached: ChainReader | null = null;
@@ -59,6 +85,11 @@ export function getServerChainReader(): ChainReader {
     },
   };
   return cached;
+}
+
+/** Test escape hatch: drop the cached reader between isolated runs. */
+export function resetServerChainReaderForTests(): void {
+  cached = null;
 }
 
 /** Expected factory address for server verification (chain 97 only). */

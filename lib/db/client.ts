@@ -19,6 +19,7 @@ import { Pool, type PoolConfig } from "pg";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import * as schema from "./schema";
+import { postgresSslPoolConfig } from "./postgres-ssl";
 
 export class DatabaseUnavailableError extends Error {
   constructor(detail = "database is not configured") {
@@ -36,7 +37,10 @@ function poolConfigFromEnv(): PoolConfig {
     throw new DatabaseUnavailableError("DATABASE_URL is not set");
   }
   return {
-    connectionString,
+    // Future-safe TLS: non-loopback hosts get sslmode=verify-full plus an
+    // explicit rejectUnauthorized guard (see ./postgres-ssl.ts). The secret
+    // itself is never logged or rewritten beyond the sslmode normalization.
+    ...postgresSslPoolConfig(connectionString),
     // Small pool: cPanel runtime + low-traffic admin/persistence workload.
     max: 5,
     idleTimeoutMillis: 10_000,

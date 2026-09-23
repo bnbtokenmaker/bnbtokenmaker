@@ -18,12 +18,15 @@
  *   creation happens here, operator-side, before going live.
  *
  * Self-contained like db-migrate.ts: does not import lib/admin/* because
- * those modules carry `import "server-only"`.
+ * those modules carry `import "server-only"`. The only lib import is the
+ * pure TLS helper `lib/db/postgres-ssl.ts` (no `server-only`, CLI-safe).
  */
 
 import { randomBytes, scryptSync } from "node:crypto";
 import { createInterface } from "node:readline/promises";
 import { Pool } from "pg";
+
+import { postgresSslPoolConfig } from "../lib/db/postgres-ssl";
 
 async function readEnvOrPrompt(
   name: string,
@@ -79,7 +82,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  const pool = new Pool({ connectionString, max: 1 });
+  const pool = new Pool({
+    // Same future-safe TLS as the runtime (verify-full equivalent).
+    ...postgresSslPoolConfig(connectionString),
+    max: 1,
+  });
   try {
     const existing = await pool.query(
       "SELECT id FROM admin_users WHERE identifier = $1",

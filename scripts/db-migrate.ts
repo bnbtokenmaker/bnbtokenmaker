@@ -10,15 +10,18 @@
  * shell, so point this script at the production DATABASE_URL from a local
  * machine to perform the initial migration (see Phase 7A report).
  *
- * Self-contained on purpose: it uses only `pg` + node builtins and does NOT
- * import lib/db/* (those modules carry `import "server-only"`, which cannot
- * load in a plain CLI process). SQL files remain the single source of DDL.
+ * Self-contained on purpose: it uses only `pg` + node builtins plus the
+ * pure TLS helper `lib/db/postgres-ssl.ts` (no `server-only`, safe in a
+ * plain CLI process). It does NOT import other lib/db/* modules. SQL files
+ * remain the single source of DDL.
  */
 
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
+
+import { postgresSslPoolConfig } from "../lib/db/postgres-ssl";
 
 const MIGRATIONS_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -35,7 +38,8 @@ async function main(): Promise<void> {
     return;
   }
   const pool = new Pool({
-    connectionString,
+    // Same future-safe TLS as the runtime (verify-full equivalent).
+    ...postgresSslPoolConfig(connectionString),
     max: 1,
     connectionTimeoutMillis: 10_000,
   });
