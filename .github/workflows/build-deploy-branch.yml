@@ -97,6 +97,18 @@ jobs:
           sol_files="$(find deploy -name '*.sol' | wc -l | tr -d ' ')"
           [ "$sol_files" = "0" ] || { echo "Solidity sources leaked into artifact:"; find deploy -name '*.sol'; exit 1; }
           echo "OK: artifact has zero native binaries and $(ls deploy/.next/static) (static_files: ${static_files})"
+          # Stylesheet guard (production incident: admin pages rendered the
+          # global header/footer unstyled). Every emitted CSS chunk must exist
+          # in the FINAL artifact and be non-empty — this catches incomplete
+          # .next/static copies or wrong-path assemblies before they ship.
+          css_files="$(find deploy/.next/static -name '*.css' | wc -l | tr -d ' ')"
+          [ "$css_files" -gt 0 ] || { echo "no CSS assets in artifact"; exit 1; }
+          empty_css="$(find deploy/.next/static -name '*.css' -size 0c | wc -l | tr -d ' ')"
+          [ "$empty_css" = "0" ] || { echo "empty CSS assets in artifact:"; find deploy/.next/static -name '*.css' -size 0c; exit 1; }
+          # The shared site chrome (header/footer layout) must be present in
+          # at least one emitted CSS chunk.
+          grep -rl '\.site-header{' deploy/.next/static --include='*.css' | grep -q . || { echo "site chrome CSS missing from artifact"; exit 1; }
+          echo "OK: ${css_files} CSS assets present and non-empty, site chrome included"
 
       - name: Smoke test standalone server on Linux
         run: |
@@ -116,6 +128,25 @@ jobs:
             [ "$code" = "200" ] || { echo "FAILED $path -> $code"; exit 1; }
             echo "200 $path"
           done
+          # Stylesheet resolution guard: every CSS href served in real HTML
+          # must resolve to a non-empty file in the FINAL artifact (catches
+          # stale/mixed-asset deploys where HTML references rotated hashes).
+          for page in / /admin/login /admin /deploy; do
+            hrefs="$(curl -s "http://127.0.0.1:3911$page" | grep -o '/_next/static/[^"]*\.css' | sort -u)"
+            [ -n "$hrefs" ] || { echo "no CSS hrefs on $page"; exit 1; }
+            for href in $hrefs; do
+              body="$(curl -s -w '\n%{http_code} %{size_download}' "http://127.0.0.1:3911$href" | tail -n 1)"
+              [ "$body" != "200 0" ] || { echo "empty CSS: $href on $page"; exit 1; }
+              code="${body%% *}"; size="${body##* }"
+              [ "$code" = "200" ] || { echo "CSS 404: $href on $page"; exit 1; }
+              [ "$size" -gt 0 ] || { echo "empty CSS: $href on $page"; exit 1; }
+              echo "200 ($size bytes) $href on $page"
+            done
+          done
+          # Unauthenticated /admin must redirect to login (guard + auth intact).
+          admin_code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3911/admin)"
+          { [ "$admin_code" = "307" ] || [ "$admin_code" = "308" ]; } || { echo "expected redirect for /admin, got $admin_code"; exit 1; }
+          echo "$admin_code /admin -> login"
           key="$(curl -s http://127.0.0.1:3911/d2b4222247f04b74b762efb0ec56a7f3.txt)"
           [ "$key" = "d2b4222247f04b74b762efb0ec56a7f3" ] || { echo "IndexNow key body mismatch: [$key]"; exit 1; }
           echo "200 IndexNow key body exact"
