@@ -9,18 +9,29 @@
  * ATOMICITY: Neon HTTP has no interactive transactions, so every mutation
  * that must be atomic (publish version + deactivate previous + activate new
  * + audit; campaign write + audit) is a SINGLE SQL statement built as a CTE
- * chain — one round-trip, all-or-nHING. A partial unique index
+ * chain — one round-trip, all-or-nothing. A partial unique index
  * (`pricing_versions_single_active`) backs the single-active invariant at the
  * database level as well.
  *
+ * DRIVER SHAPES: raw `db.execute()` results bypass Drizzle's column mapping,
+ * so Postgres int8 (BIGSERIAL `id`) arrives as a DECIMAL STRING on both
+ * transports — Neon HTTP parses OID 20 via parseBigInteger (keep-as-string),
+ * and node-postgres does the same by default. Never assert
+ * `typeof id === "number"` on raw-execute rows; use coerceRowId(). (Builder
+ * selects are unaffected: Drizzle maps int8/timestamp/boolean columns.)
+ *
  * FAILURE POLICY: every unexpected database problem surfaces as a sanitized
  * PricingStoreError("unavailable") (HTTP 503 downstream). Raw DB errors,
- * connection strings, and driver messages never leave this module.
+ * connection strings, and driver messages never leave this module — but the
+ * operation + error name/code ARE logged server-side (scrubbed) so
+ * production failures stay diagnosable.
  */
 
 import { and, desc, eq, gt, lte, sql } from "drizzle-orm";
+import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 
 import { DatabaseUnavailableError, getDb } from "../../db/client";
+import type * as schema from "../../db/schema";
 import {
   adminAuditEvents,
   campaigns,
@@ -83,6 +94,55 @@ function mapDbError(error: unknown): PricingStoreError {
     503,
     "pricing service is temporarily unavailable"
   );
+}
+
+/**
+ * Normalizes a row id from raw-execute results. Accepts safe-integer numbers
+ * AND canonical digit strings (what real Postgres drivers return for int8).
+ * Returns null for anything else — never NaN, never a truncated float.
+ */
+export function coerceRowId(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  }
+  if (typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value)) {
+    const n = Number(value);
+    return Number.isSafeInteger(n) ? n : null;
+  }
+  return null;
+}
+
+function scrubLogMessage(message: string): string {
+  return message
+    .replace(/:\/\/[^\s/@]*@[^\s/]*/g, "://***@***")
+    .replace(/password\s*=\s*[^\s;,}]*/gi, "password=***")
+    .slice(0, 300);
+}
+
+/**
+ * Safe server-side diagnostic log for store failures. Emits the operation,
+ * error name, and short driver/SQLSTATE code plus a scrubbed message —
+ * never DATABASE_URL, passwords, tokens, or connection strings. Logging must
+ * never break the request it instruments.
+ */
+export function logPricingStoreError(op: string, error: unknown): void {
+  try {
+    const name = error instanceof Error ? error.name : typeof error;
+    let code = "none";
+    if (typeof error === "object" && error !== null) {
+      const raw = (error as Record<string, unknown>).code;
+      if (typeof raw === "string" || typeof raw === "number") {
+        code = String(raw).slice(0, 32);
+      }
+    }
+    const message =
+      error instanceof Error ? ` ${scrubLogMessage(error.message)}` : "";
+    console.error(
+      `[phase7c-pricing-store] ${op} failed (${name} code=${code}):${message}`
+    );
+  } catch {
+    // Logging must never break the request.
+  }
 }
 
 export type PublishVersionInput = {
@@ -181,9 +241,27 @@ function weiOf(value: bigint): string {
 }
 
 export class PgPricingStore implements PricingStore {
+  /**
+   * @param injectedDb test seam: a Neon-shaped executor. Production always
+   * omits it (lazy getDb() per call, so env/test resets stay effective).
+   */
+  constructor(
+    private injectedDb?: Pick<
+      NeonHttpDatabase<typeof schema>,
+      "select" | "execute"
+    >
+  ) {}
+
+  private database(): Pick<
+    NeonHttpDatabase<typeof schema>,
+    "select" | "execute"
+  > {
+    return this.injectedDb ?? getDb();
+  }
+
   async getActiveVersion(): Promise<PricingVersionRow | null> {
     try {
-      const db = getDb();
+      const db = this.database();
       const rows = await db
         .select()
         .from(pricingVersions)
@@ -191,19 +269,21 @@ export class PgPricingStore implements PricingStore {
         .limit(1);
       return rows[0] ?? null;
     } catch (error) {
+      logPricingStoreError("getActiveVersion", error);
       throw mapDbError(error);
     }
   }
 
   async listVersions(limit?: number): Promise<PricingVersionRow[]> {
     try {
-      const db = getDb();
+      const db = this.database();
       return await db
         .select()
         .from(pricingVersions)
         .orderBy(desc(pricingVersions.createdAt), desc(pricingVersions.id))
         .limit(clampLimit(limit, 50));
     } catch (error) {
+      logPricingStoreError("listVersions", error);
       throw mapDbError(error);
     }
   }
@@ -212,7 +292,7 @@ export class PgPricingStore implements PricingStore {
     input: PublishVersionInput
   ): Promise<{ id: number; version: string }> {
     try {
-      const db = getDb();
+      const db = this.database();
       // Best-effort previous version for the audit summary (informational
       // only — the switch itself does not depend on this read).
       let previousVersion: string | null = null;
@@ -272,36 +352,41 @@ export class PgPricingStore implements PricingStore {
         )
         SELECT id, version FROM activate
       `);
-      const rows = resultRows<{ id: number; version: string }>(result);
+      const rows = resultRows<{ id: unknown; version: unknown }>(result);
       const created = rows[0];
-      if (!created || typeof created.id !== "number") {
+      // Raw execute() bypasses Drizzle column mapping: int8 ids arrive as
+      // digit strings on every real Postgres transport (Neon HTTP and pg).
+      const createdId = coerceRowId(created?.id);
+      if (created === undefined || createdId === null) {
         throw new PricingStoreError(
           "unavailable",
           503,
           "pricing service is temporarily unavailable"
         );
       }
-      return { id: created.id, version: String(created.version) };
+      return { id: createdId, version: String(created.version) };
     } catch (error) {
+      logPricingStoreError("publishVersion", error);
       throw mapDbError(error);
     }
   }
 
   async listCampaigns(): Promise<CampaignRow[]> {
     try {
-      const db = getDb();
+      const db = this.database();
       return await db
         .select()
         .from(campaigns)
         .orderBy(desc(campaigns.startsAt), desc(campaigns.id));
     } catch (error) {
+      logPricingStoreError("listCampaigns", error);
       throw mapDbError(error);
     }
   }
 
   async createCampaign(input: CreateCampaignInput): Promise<CampaignRow> {
     try {
-      const db = getDb();
+      const db = this.database();
       const metadata = JSON.stringify({
         name: input.name,
         code: input.code,
@@ -331,9 +416,9 @@ export class PgPricingStore implements PricingStore {
         )
         SELECT id FROM ins
       `);
-      const rows = resultRows<{ id: number }>(result);
-      const createdId = rows[0]?.id;
-      if (typeof createdId !== "number") {
+      const rows = resultRows<{ id: unknown }>(result);
+      const createdId = coerceRowId(rows[0]?.id);
+      if (createdId === null) {
         throw new PricingStoreError(
           "unavailable",
           503,
@@ -362,6 +447,7 @@ export class PgPricingStore implements PricingStore {
           "a campaign with this code already exists"
         );
       }
+      logPricingStoreError("createCampaign", error);
       throw mapDbError(error);
     }
   }
@@ -386,7 +472,7 @@ export class PgPricingStore implements PricingStore {
       throw new PricingStoreError("not-found", 404, "campaign not found");
     }
     try {
-      const db = getDb();
+      const db = this.database();
       const auditAction =
         economic ? "campaign_updated"
         : patch.enabled === true ? "campaign_enabled"
@@ -480,6 +566,7 @@ export class PgPricingStore implements PricingStore {
           "a campaign with this code already exists"
         );
       }
+      logPricingStoreError("patchCampaign", error);
       throw mapDbError(error);
     }
   }
@@ -488,7 +575,7 @@ export class PgPricingStore implements PricingStore {
     input: ResolveCampaignInput
   ): Promise<CampaignRow | null> {
     try {
-      const db = getDb();
+      const db = this.database();
       const window = await db
         .select()
         .from(campaigns)
@@ -525,19 +612,21 @@ export class PgPricingStore implements PricingStore {
         });
       return automatic[0] ?? null;
     } catch (error) {
+      logPricingStoreError("resolveCampaignForQuote", error);
       throw mapDbError(error);
     }
   }
 
   async listAuditEvents(limit?: number): Promise<AdminAuditEventRow[]> {
     try {
-      const db = getDb();
+      const db = this.database();
       return await db
         .select()
         .from(adminAuditEvents)
         .orderBy(desc(adminAuditEvents.createdAt), desc(adminAuditEvents.id))
         .limit(clampLimit(limit, 50));
     } catch (error) {
+      logPricingStoreError("listAuditEvents", error);
       throw mapDbError(error);
     }
   }
