@@ -9,7 +9,6 @@ import {
   PgAdminUserStore,
 } from "../../admin/store";
 import { PgDeploymentStore } from "../../deployments/store";
-import { classifyDbError } from "../../server/db-error-diagnostics";
 import {
   DatabaseUnavailableError,
   getDb,
@@ -105,20 +104,6 @@ describe("db — Neon HTTP runtime transport (no raw TCP/5432)", () => {
       for (const method of ["findByTx", "upsertDeployment"]) {
         assert.equal(methodType(deployments, method), "function");
       }
-    });
-  });
-
-  it("keeps the production tcp-timeout signal classifiable (diagnostic intact)", () => {
-    withDatabaseUrl(DUMMY_URL, () => {
-      // Production shape: the outer AggregateError itself carries the
-      // ETIMEDOUT code (helper classifies SAFE fields only — not broadened).
-      const timeout = Object.assign(new Error("connect ETIMEDOUT"), {
-        code: "ETIMEDOUT",
-      });
-      const aggregate = Object.assign(new AggregateError([timeout], "connect failed"), {
-        code: "ETIMEDOUT",
-      });
-      assert.equal(classifyDbError(aggregate), "tcp-timeout");
     });
   });
 });

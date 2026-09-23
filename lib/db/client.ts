@@ -5,7 +5,7 @@
  *   first use. Transport is HTTPS (Neon serverless driver), so the
  *   production cPanel runtime needs NO outbound PostgreSQL TCP/5432 — the
  *   raw-TCP `pg` Pool path was removed from the runtime after a confirmed
- *   production `ETIMEDOUT` (see temporary [admin-login-db] diagnostic).
+ *   production connection timeout (ETIMEDOUT) on outbound TCP/5432.
  * - No connection — and no schema mutation — happens at import time or on
  *   server boot. Migrations stay an EXPLICIT operation (`npm run db:migrate`,
  *   which keeps using node-postgres locally); the runtime never auto-migrates.
