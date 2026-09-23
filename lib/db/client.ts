@@ -1,25 +1,29 @@
 /**
- * Phase 7A server-only Postgres client.
+ * Phase 7A server-only database client (Neon HTTP transport).
  *
- * - Lazily creates a single `pg` Pool (pure JS, no native binaries) from
- *   DATABASE_URL on first use. No connection — and no schema mutation —
- *   happens at import time or on server boot.
- * - Migrations are an EXPLICIT operation (`npm run db:migrate`); the
- *   runtime never auto-migrates.
- * - Server-side by placement (route handlers / server components / CLI
- *   scripts only) plus a runtime browser guard below. Deliberately no
- *   `import "server-only"`: that package is absent from the unit-test
- *   runtime, and this module must stay importable by tests that inject
- *   in-memory stores (same precedent as lib/pricing/server/quote.ts,
- *   which is tested marker-free while wiring modules stay unimported).
+ * - Lazily creates a single Drizzle `neon-http` handle from DATABASE_URL on
+ *   first use. Transport is HTTPS (Neon serverless driver), so the
+ *   production cPanel runtime needs NO outbound PostgreSQL TCP/5432 — the
+ *   raw-TCP `pg` Pool path was removed from the runtime after a confirmed
+ *   production `ETIMEDOUT` (see temporary [admin-login-db] diagnostic).
+ * - No connection — and no schema mutation — happens at import time or on
+ *   server boot. Migrations stay an EXPLICIT operation (`npm run db:migrate`,
+ *   which keeps using node-postgres locally); the runtime never auto-migrates.
+ * - `pg` + `lib/db/postgres-ssl.ts` remain for the explicit local CLI tools
+ *   only (`scripts/db-migrate.ts`, `scripts/create-admin.ts`). They are NOT
+ *   imported here: this module must never instantiate a TCP pool.
+ * - Server-side by placement (route handlers / server components only) plus
+ *   a runtime browser guard below. Deliberately no `import "server-only"`:
+ *   that package is absent from the unit-test runtime, and this module must
+ *   stay importable by tests that inject in-memory stores (same precedent as
+ *   lib/pricing/server/quote.ts, which is tested marker-free while wiring
+ *   modules stay unimported).
  */
 
-
-import { Pool, type PoolConfig } from "pg";
-import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import { neon } from "@neondatabase/serverless";
+import { drizzle, type NeonHttpDatabase } from "drizzle-orm/neon-http";
 
 import * as schema from "./schema";
-import { postgresSslPoolConfig } from "./postgres-ssl";
 
 export class DatabaseUnavailableError extends Error {
   constructor(detail = "database is not configured") {
@@ -28,56 +32,31 @@ export class DatabaseUnavailableError extends Error {
   }
 }
 
-let pool: Pool | null = null;
-let db: NodePgDatabase<typeof schema> | null = null;
-
-function poolConfigFromEnv(): PoolConfig {
-  const connectionString = (process.env.DATABASE_URL ?? "").trim();
-  if (!connectionString) {
-    throw new DatabaseUnavailableError("DATABASE_URL is not set");
-  }
-  return {
-    // Future-safe TLS: non-loopback hosts get sslmode=verify-full plus an
-    // explicit rejectUnauthorized guard (see ./postgres-ssl.ts). The secret
-    // itself is never logged or rewritten beyond the sslmode normalization.
-    ...postgresSslPoolConfig(connectionString),
-    // Small pool: cPanel runtime + low-traffic admin/persistence workload.
-    max: 5,
-    idleTimeoutMillis: 10_000,
-    connectionTimeoutMillis: 8_000,
-  };
-}
+let db: NeonHttpDatabase<typeof schema> | null = null;
 
 /**
- * Returns the shared Drizzle database handle, creating the pool on first
- * call. Throws DatabaseUnavailableError when DATABASE_URL is missing —
- * callers must map this to a sanitized 503 (never leak the raw error).
+ * Returns the shared Drizzle database handle (Neon HTTP over HTTPS),
+ * creating it on first call. Throws DatabaseUnavailableError when
+ * DATABASE_URL is missing — callers must map this to a sanitized 503
+ * (never leak the raw error). The DATABASE_URL value itself is never
+ * logged or exposed here.
  */
-export function getDb(): NodePgDatabase<typeof schema> {
+export function getDb(): NeonHttpDatabase<typeof schema> {
   if (typeof window !== "undefined") {
     throw new DatabaseUnavailableError("must never run in the browser");
   }
   if (db) return db;
-  if (!pool) {
-    pool = new Pool(poolConfigFromEnv());
-    pool.on("error", () => {
-      // Idle-client errors must not crash the standalone server; per-call
-      // failures still surface to the awaiting handler.
-    });
+  const connectionString = (process.env.DATABASE_URL ?? "").trim();
+  if (!connectionString) {
+    throw new DatabaseUnavailableError("DATABASE_URL is not set");
   }
-  db = drizzle(pool, { schema });
+  // `neon()` only captures the connection string; the first actual query
+  // performs an HTTPS request. No TCP pool is created — ever.
+  db = drizzle(neon(connectionString), { schema });
   return db;
 }
 
-/** Raw pool access for the explicit migration script (server-only). */
-export function getPool(): Pool {
-  getDb();
-  if (!pool) throw new DatabaseUnavailableError("pool failed to initialize");
-  return pool;
-}
-
-/** Test escape hatch: drop the cached pool between isolated runs. */
+/** Test escape hatch: drop the cached handle between isolated runs. */
 export function resetDbForTests(): void {
-  pool = null;
   db = null;
 }

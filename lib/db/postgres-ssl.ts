@@ -1,5 +1,14 @@
 /**
- * Phase 7A Postgres TLS helper (pure, no `server-only`).
+ * Phase 7A Postgres TLS helper for the explicit local CLI tools ONLY
+ * (`scripts/db-migrate.ts`, `scripts/create-admin.ts` — pure, no
+ * `server-only`, CLI-safe).
+ *
+ * NOTE: the Next.js application runtime (`lib/db/client.ts`) NO LONGER uses
+ * this module. Since the confirmed production `ETIMEDOUT` on raw TCP/5432,
+ * the runtime talks to Neon over HTTPS (`drizzle-orm/neon-http`), which
+ * needs no `pg` Pool and no `sslmode` handling. This helper is RETAINED
+ * because the local CLI tools still use node-postgres over TCP, where the
+ * verify-full normalization below remains the correct hardening.
  *
  * Background: `pg` 8.23 emits a warning that `prefer` / `require` /
  * `verify-ca` are currently aliases for `verify-full`, with semantics
@@ -7,7 +16,7 @@
  * with `?sslmode=require`, which today verifies fully but is not
  * future-safe to spell that way.
  *
- * This helper keeps TLS verification secure and explicit:
+ * This helper keeps CLI TLS verification secure and explicit:
  * - Loopback hosts (localhost / 127.0.0.1 / ::1) are left untouched so
  *   local plain-TCP development keeps working.
  * - Any other host gets `sslmode=verify-full` in the connection string
@@ -16,10 +25,6 @@
  *   `verify-full` equivalent and survives a future `pg` sslmode change.
  * - The secret itself is never logged, printed, or otherwise exposed here;
  *   only the derived Pool config is returned.
- *
- * Importable from both the Next.js runtime (`lib/db/client.ts`) and the
- * plain-CLI scripts (`scripts/db-migrate.ts`, `scripts/create-admin.ts`)
- * because it depends only on `pg` types + node builtins.
  */
 
 import type { PoolConfig } from "pg";

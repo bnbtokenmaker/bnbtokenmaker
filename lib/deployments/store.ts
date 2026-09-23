@@ -2,7 +2,8 @@
  * Phase 7A deployment persistence boundary.
  *
  * DeploymentStore is the seam between the verified-record service and the
- * backing database. Production uses PgDeploymentStore (Drizzle over pg);
+ * backing database. Production uses PgDeploymentStore (Drizzle over the
+ * Neon HTTP runtime in lib/db/client.ts — HTTPS, no TCP pool);
  * unit tests use InMemoryDeploymentStore — no test ever needs a live DB.
  *
  * Idempotency: upsertDeployment is keyed on (chainId, txHash). A duplicate
@@ -78,7 +79,7 @@ function toInsert(record: VerifiedDeploymentRecord) {
 }
 
 // ---------------------------------------------------------------------------
-// Production store (Postgres via Drizzle).
+// Production store (Postgres via the Neon HTTP runtime).
 // ---------------------------------------------------------------------------
 
 export class PgDeploymentStore implements DeploymentStore {

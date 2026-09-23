@@ -1,9 +1,13 @@
 /**
- * Phase 7A database schema (Drizzle ORM over node-postgres).
+ * Phase 7A database schema (Drizzle ORM, pg-core table definitions).
  *
  * This file mirrors db/migrations/0001_phase7a_foundation.sql as a typed
  * query surface. The SQL migration is authoritative for DDL; this module is
  * authoritative for TypeScript shapes. Keep them in sync when evolving.
+ *
+ * Transport note: the Next.js runtime serves these tables over Neon HTTP
+ * (`drizzle-orm/neon-http` in lib/db/client.ts); the explicit local CLI
+ * tools use node-postgres. The table definitions are transport-agnostic.
  *
  * Amount conventions (blockchain-exact, no floating point):
  * - wei / base-unit supply / fees are TEXT canonical integer strings.

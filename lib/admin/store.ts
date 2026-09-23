@@ -2,7 +2,8 @@
  * Phase 7A admin persistence boundary.
  *
  * AdminUserStore / AdminSessionStore mirror the deployments seam:
- * production Pg* implementations (Drizzle over pg), InMemory* for unit
+ * production Pg* implementations (Drizzle over the Neon HTTP runtime in
+ * lib/db/client.ts — HTTPS, no TCP pool), InMemory* for unit
  * tests. Passwords only ever exist here as scrypt hashes.
  */
 
@@ -43,7 +44,7 @@ export type AdminSessionStore = {
 };
 
 // ---------------------------------------------------------------------------
-// Production stores (Postgres via Drizzle).
+// Production stores (Postgres via the Neon HTTP runtime).
 // ---------------------------------------------------------------------------
 
 export class PgAdminUserStore implements AdminUserStore {
