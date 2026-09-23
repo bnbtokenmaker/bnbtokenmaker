@@ -1,0 +1,332 @@
+{
+  "version": 3,
+  "pages404": true,
+  "appType": "app",
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "priority": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [],
+  "onMatchHeaders": [],
+  "rewrites": {
+    "beforeFiles": [],
+    "afterFiles": [],
+    "fallback": []
+  },
+  "dynamicRoutes": [
+    {
+      "page": "/admin/deployments/[id]",
+      "regex": "^/admin/deployments/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/admin/deployments/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/api/admin/campaigns/[id]",
+      "regex": "^/api/admin/campaigns/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/api/admin/campaigns/(?<nxtPid>[^/]+?)(?:/)?$"
+    }
+  ],
+  "staticRoutes": [
+    {
+      "page": "/",
+      "regex": "^/(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/(?:/)?$"
+    },
+    {
+      "page": "/_global-error",
+      "regex": "^/_global\\-error(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_global\\-error(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/add-bep20-token-to-wallet",
+      "regex": "^/add\\-bep20\\-token\\-to\\-wallet(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/add\\-bep20\\-token\\-to\\-wallet(?:/)?$"
+    },
+    {
+      "page": "/admin",
+      "regex": "^/admin(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin(?:/)?$"
+    },
+    {
+      "page": "/admin/campaigns",
+      "regex": "^/admin/campaigns(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/campaigns(?:/)?$"
+    },
+    {
+      "page": "/admin/deployments",
+      "regex": "^/admin/deployments(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/deployments(?:/)?$"
+    },
+    {
+      "page": "/admin/login",
+      "regex": "^/admin/login(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/login(?:/)?$"
+    },
+    {
+      "page": "/admin/pricing",
+      "regex": "^/admin/pricing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/pricing(?:/)?$"
+    },
+    {
+      "page": "/api/admin/campaigns",
+      "regex": "^/api/admin/campaigns(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/admin/campaigns(?:/)?$"
+    },
+    {
+      "page": "/api/admin/login",
+      "regex": "^/api/admin/login(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/admin/login(?:/)?$"
+    },
+    {
+      "page": "/api/admin/logout",
+      "regex": "^/api/admin/logout(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/admin/logout(?:/)?$"
+    },
+    {
+      "page": "/api/admin/me",
+      "regex": "^/api/admin/me(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/admin/me(?:/)?$"
+    },
+    {
+      "page": "/api/admin/pricing",
+      "regex": "^/api/admin/pricing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/admin/pricing(?:/)?$"
+    },
+    {
+      "page": "/api/admin/pricing/publish",
+      "regex": "^/api/admin/pricing/publish(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/admin/pricing/publish(?:/)?$"
+    },
+    {
+      "page": "/api/campaigns/active",
+      "regex": "^/api/campaigns/active(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/campaigns/active(?:/)?$"
+    },
+    {
+      "page": "/api/deployments/record",
+      "regex": "^/api/deployments/record(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/deployments/record(?:/)?$"
+    },
+    {
+      "page": "/api/pricing/quote",
+      "regex": "^/api/pricing/quote(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/pricing/quote(?:/)?$"
+    },
+    {
+      "page": "/bep20-token-cost",
+      "regex": "^/bep20\\-token\\-cost(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/bep20\\-token\\-cost(?:/)?$"
+    },
+    {
+      "page": "/bep20-token-generator",
+      "regex": "^/bep20\\-token\\-generator(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/bep20\\-token\\-generator(?:/)?$"
+    },
+    {
+      "page": "/bep20-token-security-checklist",
+      "regex": "^/bep20\\-token\\-security\\-checklist(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/bep20\\-token\\-security\\-checklist(?:/)?$"
+    },
+    {
+      "page": "/bep20-tokenomics",
+      "regex": "^/bep20\\-tokenomics(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/bep20\\-tokenomics(?:/)?$"
+    },
+    {
+      "page": "/bep20-vs-erc20",
+      "regex": "^/bep20\\-vs\\-erc20(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/bep20\\-vs\\-erc20(?:/)?$"
+    },
+    {
+      "page": "/blog",
+      "regex": "^/blog(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/blog(?:/)?$"
+    },
+    {
+      "page": "/blog/how-to-create-a-bep20-token",
+      "regex": "^/blog/how\\-to\\-create\\-a\\-bep20\\-token(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/blog/how\\-to\\-create\\-a\\-bep20\\-token(?:/)?$"
+    },
+    {
+      "page": "/bnb-token-generator",
+      "regex": "^/bnb\\-token\\-generator(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/bnb\\-token\\-generator(?:/)?$"
+    },
+    {
+      "page": "/contact",
+      "regex": "^/contact(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/contact(?:/)?$"
+    },
+    {
+      "page": "/create",
+      "regex": "^/create(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/create(?:/)?$"
+    },
+    {
+      "page": "/create-bep20-token",
+      "regex": "^/create\\-bep20\\-token(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/create\\-bep20\\-token(?:/)?$"
+    },
+    {
+      "page": "/create-meme-coin-bnb-chain",
+      "regex": "^/create\\-meme\\-coin\\-bnb\\-chain(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/create\\-meme\\-coin\\-bnb\\-chain(?:/)?$"
+    },
+    {
+      "page": "/create-token-on-bnb-chain",
+      "regex": "^/create\\-token\\-on\\-bnb\\-chain(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/create\\-token\\-on\\-bnb\\-chain(?:/)?$"
+    },
+    {
+      "page": "/deploy",
+      "regex": "^/deploy(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/deploy(?:/)?$"
+    },
+    {
+      "page": "/disclaimer",
+      "regex": "^/disclaimer(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/disclaimer(?:/)?$"
+    },
+    {
+      "page": "/docs",
+      "regex": "^/docs(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs(?:/)?$"
+    },
+    {
+      "page": "/faq",
+      "regex": "^/faq(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/faq(?:/)?$"
+    },
+    {
+      "page": "/features",
+      "regex": "^/features(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/features(?:/)?$"
+    },
+    {
+      "page": "/how-it-works",
+      "regex": "^/how\\-it\\-works(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/how\\-it\\-works(?:/)?$"
+    },
+    {
+      "page": "/icon.svg",
+      "regex": "^/icon\\.svg(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/icon\\.svg(?:/)?$"
+    },
+    {
+      "page": "/llms.txt",
+      "regex": "^/llms\\.txt(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/llms\\.txt(?:/)?$"
+    },
+    {
+      "page": "/meme-coin-tokenomics",
+      "regex": "^/meme\\-coin\\-tokenomics(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/meme\\-coin\\-tokenomics(?:/)?$"
+    },
+    {
+      "page": "/privacy",
+      "regex": "^/privacy(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/privacy(?:/)?$"
+    },
+    {
+      "page": "/robots.txt",
+      "regex": "^/robots\\.txt(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/robots\\.txt(?:/)?$"
+    },
+    {
+      "page": "/sitemap.xml",
+      "regex": "^/sitemap\\.xml(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/sitemap\\.xml(?:/)?$"
+    },
+    {
+      "page": "/terms",
+      "regex": "^/terms(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/terms(?:/)?$"
+    },
+    {
+      "page": "/verify-bep20-token",
+      "regex": "^/verify\\-bep20\\-token(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/verify\\-bep20\\-token(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "rsc",
+    "varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "prefetchHeader": "next-router-prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSegmentHeader": "next-router-segment-prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments",
+    "clientParamParsing": false,
+    "dynamicRSCPrerender": false
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  }
+}

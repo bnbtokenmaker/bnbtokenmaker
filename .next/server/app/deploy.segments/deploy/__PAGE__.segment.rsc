@@ -1,0 +1,23 @@
+1:"$Sreact.fragment"
+2:I[98834,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js","/_next/static/chunks/3_z22u320w6vp.js","/_next/static/chunks/1b832gb5wd9kz.js","/_next/static/chunks/40vix7mr4699r.js","/_next/static/chunks/1hb5nsyswdfz0.js"],"DeployPage"]
+3:I[97367,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+8:I[97367,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],"ViewportBoundary"]
+9:I[97367,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],"MetadataBoundary"]
+a:I[27201,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],"IconMark"]
+c:I[39756,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],"default"]
+d:I[37457,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],"default"]
+:HL["/_next/static/chunks/2ui18sp0c5os1.css","style"]
+:HL["/_next/static/chunks/39m32_9pdr-94.css","style"]
+7:X
+f:X
+f:C
+0:{"buildId":"fgBXVyGnAx23FckfrDRgc","data":[{"rsc":["$","$1","c",{"children":[["$","$L2",null,{}],[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/2ui18sp0c5os1.css","precedence":"next"}],["$","link","1",{"rel":"stylesheet","href":"/_next/static/chunks/39m32_9pdr-94.css","precedence":"next"}],["$","script","script-0",{"src":"/_next/static/chunks/3_z22u320w6vp.js","async":true}],["$","script","script-1",{"src":"/_next/static/chunks/1b832gb5wd9kz.js","async":true}],["$","script","script-2",{"src":"/_next/static/chunks/40vix7mr4699r.js","async":true}],["$","script","script-3",{"src":"/_next/static/chunks/1hb5nsyswdfz0.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":"$@6","staleTime":"$7","varyParams":null},{"rsc":["$","$1","h",{"children":[null,["$","$L8",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]}],["$","div",null,{"hidden":true,"children":["$","$L9",null,{"children":["$","$4",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"Review & Deploy Token — BNB Token Maker"}],["$","meta","1",{"name":"description","content":"Review your BEP-20 token configuration and deploy it to BNB Smart Chain Testnet from your wallet."}],["$","meta","2",{"name":"robots","content":"noindex, follow"}],["$","link","3",{"rel":"icon","href":"/favicon.ico","sizes":"16x16 32x32"}],["$","link","4",{"rel":"icon","href":"/icon.svg","type":"image/svg+xml"}],["$","$La","5",{}]]}]}]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}],"isPartial":"$@b","staleTime":"$7","varyParams":null},{"rsc":["$","$1","c",{"children":[null,["$","$Lc",null,{"parallelRouterKey":"children","template":["$","$Ld",null,{}]}]]}],"isPartial":"$@e","staleTime":"$7","varyParams":"$f"}],"isUpgradeableISRFallback":false,"a":"$@10","rootVaryParams":null,"needsRuntimeRequest":"$@11"}
+5:null
+11:true
+7:300
+7:C
+10:0
+b:"$undefined"
+e:"$undefined"
+6:"$undefined"

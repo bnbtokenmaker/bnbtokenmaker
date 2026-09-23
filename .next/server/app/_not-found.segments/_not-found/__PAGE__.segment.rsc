@@ -1,0 +1,23 @@
+1:"$Sreact.fragment"
+2:I[22016,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],""]
+3:I[97367,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+8:I[97367,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],"ViewportBoundary"]
+9:I[97367,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],"MetadataBoundary"]
+a:I[27201,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],"IconMark"]
+c:I[39756,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],"default"]
+d:I[37457,["/_next/static/chunks/3z359u2wiac8d.js","/_next/static/chunks/04xkt6prjf_8v.js","/_next/static/chunks/0_2bbm8mra694.js","/_next/static/chunks/3w8t1sybpjfpj.js","/_next/static/chunks/0qzpe1u4q6pgi.js","/_next/static/chunks/1h9j8k6u0g6y8.js"],"default"]
+:HL["/_next/static/chunks/2ui18sp0c5os1.css","style"]
+:HL["/_next/static/chunks/16ex9h_ipol8f.css","style"]
+7:X
+f:X
+f:C
+0:{"buildId":"fgBXVyGnAx23FckfrDRgc","data":[{"rsc":["$","$1","c",{"children":[["$","section",null,{"className":"app","id":"top","aria-labelledby":"nf-title","children":["$","div",null,{"className":"container nf-wrap","children":[["$","div",null,{"className":"kicker","children":[["$","span",null,{"className":"dot"}],"BNB Token Maker"]}],["$","p",null,{"className":"nf-code","aria-hidden":"true","children":"404"}],["$","h1",null,{"id":"nf-title","children":"Page not found"}],["$","p",null,{"className":"nf-lede","children":"The page you're looking for doesn't exist or may have moved."}],["$","div",null,{"className":"nf-ctas","children":[["$","$L2",null,{"className":"btn btn-primary","href":"/","children":"Back to home"}],["$","$L2",null,{"className":"btn btn-ghost","href":"/create","children":"Create a token"}]]}]]}]}],[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/2ui18sp0c5os1.css","precedence":"next"}],["$","link","1",{"rel":"stylesheet","href":"/_next/static/chunks/16ex9h_ipol8f.css","precedence":"next"}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":"$@6","staleTime":"$7","varyParams":null},{"rsc":["$","$1","h",{"children":[["$","meta",null,{"name":"robots","content":"noindex"}],["$","$L8",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]}],["$","div",null,{"hidden":true,"children":["$","$L9",null,{"children":["$","$4",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"Page not found — BNB Token Maker"}],["$","meta","1",{"name":"description","content":"Create a BEP-20 token on BNB Smart Chain in minutes. A no-code generator with full control over supply, ownership and security. No smart contracts required."}],["$","meta","2",{"name":"robots","content":"noindex, follow"}],["$","link","3",{"rel":"icon","href":"/favicon.ico","sizes":"16x16 32x32"}],["$","link","4",{"rel":"icon","href":"/icon.svg","type":"image/svg+xml"}],["$","$La","5",{}]]}]}]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}],"isPartial":"$@b","staleTime":"$7","varyParams":null},{"rsc":["$","$1","c",{"children":[null,["$","$Lc",null,{"parallelRouterKey":"children","template":["$","$Ld",null,{}]}]]}],"isPartial":"$@e","staleTime":"$7","varyParams":"$f"}],"isUpgradeableISRFallback":false,"a":"$@10","rootVaryParams":null,"needsRuntimeRequest":"$@11"}
+5:null
+11:true
+7:300
+7:C
+10:0
+b:"$undefined"
+e:"$undefined"
+6:"$undefined"

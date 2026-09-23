@@ -1,0 +1,11 @@
+:HL["/_next/static/chunks/3bonwh93ele53.css","style"]
+:HL["/_next/static/media/0c89a48fa5027cee-s.p.2cyn07wtgehh0.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/media/99e609270109b47d-s.p.40sczeszzbjw1.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/media/a343f882a40d2cc9-s.p.1sj6eobyi31rd.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/media/effe91970fc4db64-s.p.0oace-s_gkfks.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/chunks/3vtfwluyesool.css","style"]
+:HL["https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css","style"]
+:HL["/_next/static/chunks/2ui18sp0c5os1.css","style"]
+:HL["/_next/static/chunks/16ex9h_ipol8f.css","style"]
+:HL["/logo-bnb-chain.svg","image"]
+0:{"tree":{"name":"","param":null,"prefetchHints":4112,"slots":{"children":{"name":"verify-bep20-token","param":null,"prefetchHints":4160,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}}}},"staleTime":300,"buildId":"fgBXVyGnAx23FckfrDRgc"}
