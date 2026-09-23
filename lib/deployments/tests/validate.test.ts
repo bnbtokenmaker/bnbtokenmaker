@@ -8,6 +8,7 @@ import {
   parseFeatureConfig,
   parseRecordHint,
   RecordHintError,
+  stableJsonEqual,
   toCanonicalUintString,
 } from "../validate";
 
@@ -90,6 +91,40 @@ describe("deployments — canonical uint strings (no floating point)", () => {
     assert.ok(!isCanonicalUintString("-1"));
     assert.ok(!isCanonicalUintString(""));
     assert.ok(!isCanonicalUintString(42));
+  });
+});
+
+describe("deployments — stable JSON equality (JSONB-immune identity)", () => {
+  it("ignores object key order at every depth", () => {
+    const a = {
+      version: 1,
+      burn: false,
+      nested: { z: 1, a: [1, { y: true, b: false }] },
+    };
+    const b = {
+      nested: { a: [1, { b: false, y: true }], z: 1 },
+      burn: false,
+      version: 1,
+    };
+    assert.ok(stableJsonEqual(a, b));
+  });
+
+  it("array order remains significant", () => {
+    assert.ok(!stableJsonEqual({ ids: ["a", "b"] }, { ids: ["b", "a"] }));
+    assert.ok(stableJsonEqual({ ids: ["a", "b"] }, { ids: ["a", "b"] }));
+  });
+
+  it("extra/missing/changed keys or values compare unequal", () => {
+    const base = { version: 1, burn: false, mint: true };
+    assert.ok(!stableJsonEqual(base, { ...base, extra: true }));
+    assert.ok(!stableJsonEqual({ ...base, extra: true }, base));
+    const withoutMint: Record<string, unknown> = { ...base };
+    delete withoutMint.mint;
+    assert.ok(!stableJsonEqual(base, withoutMint));
+    assert.ok(!stableJsonEqual(base, { ...base, burn: true }));
+    assert.ok(!stableJsonEqual(base, { ...base, version: 2 }));
+    assert.ok(!stableJsonEqual(base, { ...base, version: "1" }));
+    assert.ok(stableJsonEqual(base, { ...base }));
   });
 });
 

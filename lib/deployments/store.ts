@@ -16,6 +16,7 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { deployments, type DeploymentRow } from "../db/schema";
+import { stableJsonEqual } from "./validate";
 import type { VerifiedDeploymentRecord } from "./verify";
 
 export type UpsertResult = {
@@ -40,8 +41,6 @@ export type DeploymentStore = {
 };
 
 function sameFacts(a: VerifiedDeploymentRecord, row: DeploymentRow): boolean {
-  const featureConfig = row.featureConfig as Record<string, unknown>;
-  const quoteSnapshot = row.quoteSnapshot as Record<string, unknown>;
   return (
     row.contractAddress === a.contractAddress &&
     row.factoryAddress === a.factoryAddress &&
@@ -50,11 +49,15 @@ function sameFacts(a: VerifiedDeploymentRecord, row: DeploymentRow): boolean {
     row.tokenSymbol === a.tokenSymbol &&
     row.decimals === a.decimals &&
     row.initialSupplyBase === a.initialSupplyBase &&
-    JSON.stringify(featureConfig) === JSON.stringify(a.featureConfig) &&
+    // Order-insensitive (PostgreSQL JSONB normalizes object key order on
+    // write) but strict: extra/missing/changed keys or values still differ.
+    stableJsonEqual(row.featureConfig, a.featureConfig) &&
     row.platformFeeWei === a.platformFeeWei &&
-    (row.blockNumber ?? null) === (a.blockNumber ?? null) &&
-    (quoteSnapshot as { pricingVersion?: unknown }).pricingVersion ===
-      a.quoteSnapshot.pricingVersion
+    (row.blockNumber ?? null) === (a.blockNumber ?? null)
+    // NOTE: quoteSnapshot is intentionally excluded. It is informational
+    // metadata derived from the CURRENT server pricing config at record
+    // time — not immutable transaction identity. First insert stores it;
+    // idempotent re-records preserve the original row untouched.
   );
 }
 

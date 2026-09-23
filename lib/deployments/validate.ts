@@ -156,3 +156,39 @@ export function parseFeatureConfig(input: unknown): FeatureConfigV1 | null {
 export function featureIdsFromConfig(config: FeatureConfigV1): string[] {
   return FEATURE_KEYS.filter((key) => config[key]);
 }
+
+// ---------------------------------------------------------------------------
+// Order-insensitive JSON equality (deployment identity).
+// ---------------------------------------------------------------------------
+
+/**
+ * Recursively canonicalize a JSON-like value: object keys sorted
+ * (bytewise), array order PRESERVED. JSONB storage normalizes object key
+ * order on write, so identity comparisons of round-tripped values must not
+ * depend on insertion order — while extra/missing/changed keys or values
+ * must still compare unequal.
+ */
+function canonicalizeJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeJsonValue);
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) {
+      out[key] = canonicalizeJsonValue(record[key]);
+    }
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Strict semantic JSON equality: equal iff canonical forms are identical.
+ * Extra, missing, or changed keys/values (at any depth) compare unequal;
+ * array order remains significant.
+ */
+export function stableJsonEqual(a: unknown, b: unknown): boolean {
+  return (
+    JSON.stringify(canonicalizeJsonValue(a)) ===
+    JSON.stringify(canonicalizeJsonValue(b))
+  );
+}
