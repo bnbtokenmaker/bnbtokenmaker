@@ -106,6 +106,7 @@ import {
   type PendingDeployment,
   type PreparedDeployment,
 } from "../lib/deploy/tx";
+import { requestDeploymentRecord } from "../lib/deploy/record-client";
 
 const RECEIPT_TIMEOUT_MS = 120_000;
 
@@ -293,6 +294,15 @@ export function DeployFlow({
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const successRef = useRef<HTMLDivElement | null>(null);
   const announcedRef = useRef<string | null>(null);
+  // Phase 7A server persistence: best-effort, once per transaction, never
+  // blocking and never surfaced — blockchain success is established before
+  // this is ever called, so a recording outage must not alter success UI.
+  const recordedRef = useRef<Set<string>>(new Set());
+  const recordServerSide = useCallback((txHash: `0x${string}`) => {
+    if (recordedRef.current.has(txHash)) return;
+    recordedRef.current.add(txHash);
+    void requestDeploymentRecord(txHash);
+  }, []);
 
   const featureIds = useMemo(() => selectedFeatureIds(feats), [feats]);
   const onTestnet = isConnected && network.status === "testnet";
@@ -690,6 +700,9 @@ export function DeployFlow({
         });
         setRecovered(null);
         dispatch({ type: "RECEIPT_OK" });
+        // Best-effort server record AFTER confirmed success. Fire-and-forget:
+        // recording failure never converts this success into a failure.
+        recordServerSide(txHash);
       } catch (error) {
         dispatch({
           type: "RECEIPT_FAIL",
@@ -697,7 +710,7 @@ export function DeployFlow({
         });
       }
     },
-    [dispatch, waitForReceipt, tokenName, tokenSymbol]
+    [dispatch, waitForReceipt, tokenName, tokenSymbol, recordServerSide]
   );
 
   const startDeployment = useCallback(async () => {
@@ -866,6 +879,14 @@ export function DeployFlow({
   const devVerifyCode = resultUnverifiable
     ? devQueryErrorCode(verifyQuery.error, "receipt-timeout")
     : null;
+
+  // Phase 7A: a refresh-restored verified success retries the idempotent
+  // server record exactly once. Read-only recovery otherwise unchanged.
+  useEffect(() => {
+    if (storedResult && verifyQuery.data) {
+      recordServerSide(storedResult.txHash);
+    }
+  }, [storedResult, verifyQuery.data, recordServerSide]);
 
   // Safety net only: after a CONFIRMED receipt, bring a possibly
   // below-the-fold success panel into view once per transaction. Layout
