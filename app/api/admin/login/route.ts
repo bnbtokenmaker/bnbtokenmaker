@@ -21,6 +21,7 @@ import {
   checkRateLimit,
   clientIpFromRequest,
 } from "../../../../lib/server/rate-limit";
+import { logAdminLoginDbError } from "../../../../lib/server/db-error-diagnostics";
 
 export const dynamic = "force-dynamic";
 
@@ -68,8 +69,15 @@ export async function POST(request: Request): Promise<Response> {
           { status: 401 }
         );
       }
+      if (error.code === "unavailable") {
+        // TEMPORARY production diagnostic (secret-safe): the public response
+        // below is unchanged. Remove the logging call once classified.
+        logAdminLoginDbError(error);
+      }
       return Response.json({ error: { code: error.code } }, { status: error.httpStatus });
     }
+    // TEMPORARY production diagnostic (secret-safe): response unchanged.
+    logAdminLoginDbError(error);
     return Response.json({ error: { code: "unavailable" } }, { status: 503 });
   }
 }

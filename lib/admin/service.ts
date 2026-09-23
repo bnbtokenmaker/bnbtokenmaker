@@ -41,8 +41,8 @@ export type AuthErrorCode =
 export class AuthError extends Error {
   readonly code: AuthErrorCode;
   readonly httpStatus: number;
-  constructor(code: AuthErrorCode, httpStatus: number) {
-    super(code);
+  constructor(code: AuthErrorCode, httpStatus: number, options?: { cause?: unknown }) {
+    super(code, options ? { cause: options.cause } : undefined);
     this.name = "AuthError";
     this.code = code;
     this.httpStatus = httpStatus;
@@ -104,8 +104,11 @@ export async function loginAdmin(
   let user: AdminUserRow | null;
   try {
     user = await stores.users.findByIdentifier(identifier);
-  } catch {
-    throw new AuthError("unavailable", 503);
+  } catch (cause) {
+    // TEMPORARY production diagnostic: the original DB error rides along as
+    // `cause` so the login route can log a sanitized classification without
+    // changing the public generic failure.
+    throw new AuthError("unavailable", 503, { cause });
   }
   // Timing shield: unknown identifiers still cost one scrypt verification
   // so absent-vs-present users are not trivially distinguishable.
@@ -132,8 +135,9 @@ export async function loginAdmin(
       expiresAt,
     });
     await stores.users.updateLoginSuccess(user.id, now);
-  } catch {
-    throw new AuthError("unavailable", 503);
+  } catch (cause) {
+    // TEMPORARY production diagnostic: see above — public behavior unchanged.
+    throw new AuthError("unavailable", 503, { cause });
   }
   return { token, expiresAt, identifier: user.identifier };
 }
