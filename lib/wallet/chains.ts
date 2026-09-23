@@ -100,3 +100,12 @@ export function explorerAddressUrl(
   if (!descriptor || !/^0x[a-fA-F0-9]{40}$/.test(address)) return null;
   return `${descriptor.explorerUrl}/address/${address}`;
 }
+
+export function explorerTxUrl(
+  chainId: number | undefined | null,
+  txHash: string
+): string | null {
+  const descriptor = chainDescriptor(chainId);
+  if (!descriptor || !/^0x[a-fA-F0-9]{64}$/.test(txHash)) return null;
+  return `${descriptor.explorerUrl}/tx/${txHash}`;
+}

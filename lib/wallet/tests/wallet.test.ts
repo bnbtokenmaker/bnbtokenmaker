@@ -7,6 +7,7 @@ import {
   chainDescriptor,
   chainName,
   explorerAddressUrl,
+  explorerTxUrl,
   isSupportedChainId,
 } from "../chains";
 import { describeWalletError } from "../errors";
@@ -71,6 +72,23 @@ describe("lib/wallet — chains", () => {
     assert.equal(explorerAddressUrl(1, ADDRESS), null);
     assert.equal(explorerAddressUrl(56, "not-an-address"), null);
     assert.equal(explorerAddressUrl(undefined, ADDRESS), null);
+  });
+
+  it("builds explorer links only for valid tx hashes on supported chains", () => {
+    const tx =
+      "0xaf52ed25e9ad10c0d22455c1bcda4bf0b095eadeceab9debf4d2e0c93203a45c";
+    assert.equal(
+      explorerTxUrl(97, tx),
+      `https://testnet.bscscan.com/tx/${tx}`
+    );
+    assert.equal(
+      explorerTxUrl(56, tx),
+      `https://bscscan.com/tx/${tx}`
+    );
+    assert.equal(explorerTxUrl(1, tx), null);
+    assert.equal(explorerTxUrl(97, "0x123"), null);
+    assert.equal(explorerTxUrl(97, ADDRESS), null);
+    assert.equal(explorerTxUrl(undefined, tx), null);
   });
 });
 

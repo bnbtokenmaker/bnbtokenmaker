@@ -10,6 +10,8 @@
 
 import { useState } from "react";
 
+import styles from "../admin.module.css";
+
 export function LoginForm() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -86,11 +88,15 @@ export function LoginForm() {
         />
       </div>
       {error ? (
-        <p role="alert" className="deploy-muted">
+        <p role="alert" className={styles.alert}>
           {error}
         </p>
       ) : null}
-      <button type="submit" className="btn btn-primary" disabled={busy}>
+      <button
+        type="submit"
+        className={`${styles.btn} ${styles.btnPrimary}`}
+        disabled={busy}
+      >
         {busy ? "Signing in…" : "Sign in"}
       </button>
     </form>

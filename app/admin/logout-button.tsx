@@ -10,6 +10,8 @@
 
 import { useState } from "react";
 
+import styles from "./admin.module.css";
+
 export function LogoutButton() {
   const [busy, setBusy] = useState(false);
 
@@ -29,7 +31,7 @@ export function LogoutButton() {
   return (
     <button
       type="button"
-      className="btn btn-ghost"
+      className={`${styles.btn} ${styles.btnGhost} ${styles.btnSmall}`}
       onClick={() => void onLogout()}
       disabled={busy}
     >

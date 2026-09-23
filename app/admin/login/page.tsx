@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { authenticateAdmin } from "../../../lib/admin/service";
 import { ADMIN_SESSION_COOKIE } from "../../../lib/admin/session";
 import { getAdminStores } from "../../../lib/admin/stores";
+import styles from "../admin.module.css";
 import { LoginForm } from "./form";
 
 /** Phase 7A admin sign-in. Already-authenticated sessions skip to /admin. */
@@ -26,21 +27,19 @@ export default async function AdminLoginPage() {
   }
 
   return (
-    <section className="app" id="top">
-      <div className="container">
-        <header className="app-head">
-          <div className="kicker">
-            <span className="dot"></span>Site administration
+    <div className={styles.admin}>
+      <div className={`${styles.container} ${styles.loginWrap}`}>
+        <header className={styles.pageHead}>
+          <div className={styles.kicker}>
+            <span className={styles.dot}></span>Site administration
           </div>
           <h1>Admin sign in</h1>
-          <p className="intro">
-            Restricted area. If you are not the site operator, please leave.
-          </p>
+          <p>Restricted area. If you are not the site operator, please leave.</p>
         </header>
-        <div className="deploy-card">
+        <div className={styles.loginCard}>
           <LoginForm />
         </div>
       </div>
-    </section>
+    </div>
   );
 }
