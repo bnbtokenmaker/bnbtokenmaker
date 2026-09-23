@@ -43,7 +43,7 @@ export function CampaignTopbar() {
           typeof record.name !== "string" ||
           record.name.length === 0 ||
           typeof record.discountPercent !== "string" ||
-          !/^\d+\.\d{2}$/.test(record.discountPercent)
+          !/^\d+(\.\d{1,2})?$/.test(record.discountPercent)
         ) {
           return;
         }

@@ -89,7 +89,6 @@ async function sendCampaign(
 export function CreateCampaignForm() {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [code, setCode] = useState("");
   const [percent, setPercent] = useState("10");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
@@ -115,9 +114,11 @@ export function CreateCampaignForm() {
     }
     setBusy(true);
     setError(null);
+    // Codeless-only: new campaigns are always automatic (code null). The
+    // server rejects any non-null code explicitly (see API route).
     const outcome = await sendCampaign("/api/admin/campaigns", "POST", {
       name: trimmedName,
-      code: code.trim().length === 0 ? null : code,
+      code: null,
       discountBasisPoints: basisPoints,
       startsAt: startIso,
       endsAt: endIso,
@@ -128,7 +129,6 @@ export function CreateCampaignForm() {
       return;
     }
     setName("");
-    setCode("");
     setPercent("10");
     setStartsAt("");
     setEndsAt("");
@@ -148,18 +148,6 @@ export function CreateCampaignForm() {
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Launch week"
-          />
-        </div>
-        <div className={styles.field}>
-          <label htmlFor="campaign-code">Code (optional)</label>
-          <input
-            id="campaign-code"
-            className={styles.input}
-            type="text"
-            autoComplete="off"
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-            placeholder="LAUNCH10"
           />
         </div>
         <div className={styles.field}>
@@ -218,7 +206,6 @@ export function CampaignActions({ campaign }: { campaign: CampaignDto }) {
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState(campaign.name);
-  const [code, setCode] = useState(campaign.code ?? "");
   const [percent, setPercent] = useState(
     basisPointsToPercentInput(campaign.discountBasisPoints)
   );
@@ -267,7 +254,6 @@ export function CampaignActions({ campaign }: { campaign: CampaignDto }) {
       "PATCH",
       {
         name: trimmedName,
-        code: code.trim().length === 0 ? null : code,
         discountBasisPoints: basisPoints,
         startsAt: startIso,
         endsAt: endIso,
@@ -319,15 +305,6 @@ export function CampaignActions({ campaign }: { campaign: CampaignDto }) {
               type="text"
               value={name}
               onChange={(event) => setName(event.target.value)}
-            />
-          </label>
-          <label className={`${styles.small} ${styles.muted}`}>
-            Code (empty = automatic)
-            <input
-              className={styles.input}
-              type="text"
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
             />
           </label>
           <label className={`${styles.small} ${styles.muted}`}>

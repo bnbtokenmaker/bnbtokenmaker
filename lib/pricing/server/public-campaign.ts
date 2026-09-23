@@ -23,21 +23,20 @@ import {
   loadAuthoritativeSnapshot,
   type PricingStores,
 } from "./store";
+import { formatDiscountPercent } from "../discount-percent";
 
 export type PublicCampaign = {
   name: string;
   discountBasisPoints: number;
-  /** Exact percent label, e.g. "10.00" (no floats). */
+  /** Exact trimmed percent label, e.g. "10" (no floats, no trailing zeros). */
   discountPercent: string;
   /** Real campaign end, ISO string (server-provided). */
   endsAt: string;
 };
 
-/** Exact "10.00" percent label from integer basis points (no floats). */
+/** Exact trimmed percent label from integer basis points (shared helper). */
 export function basisPointsToPercentLabel(basisPoints: number): string {
-  const whole = Math.floor(basisPoints / 100);
-  const frac = String(basisPoints % 100).padStart(2, "0");
-  return `${whole}.${frac}`;
+  return formatDiscountPercent(basisPoints);
 }
 
 /**

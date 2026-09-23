@@ -76,6 +76,15 @@ export async function PATCH(
     );
   }
 
+  // Codeless-only policy: setting a code is rejected (clearing to null or
+  // leaving the code untouched stays allowed so legacy rows can be retired).
+  if (patch.code !== undefined && patch.code !== null) {
+    return Response.json(
+      { error: { code: "invalid-request" } },
+      { status: 400 }
+    );
+  }
+
   try {
     const row = await stores.pricing.patchCampaign(id, patch, guard.admin.id);
     return Response.json(

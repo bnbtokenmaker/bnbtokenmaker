@@ -9,7 +9,10 @@ import {
 } from "../stores";
 import { InMemoryAdminUserStore } from "../store";
 import { resetRateLimitsForTests } from "../../server/rate-limit";
-import { resetPricingStoresForTests } from "../../pricing/server/store";
+import {
+  getPricingStores,
+  resetPricingStoresForTests,
+} from "../../pricing/server/store";
 
 import { POST as loginPost } from "../../../app/api/admin/login/route";
 import { GET as pricingGet } from "../../../app/api/admin/pricing/route";
@@ -219,12 +222,13 @@ describe("phase 7C admin pricing/campaign routes", () => {
     await seedAdmin();
     const cookie = await loginCookie();
 
+    // Codeless-only: new campaigns are always automatic (code null).
     const create = await campaignsPost(
       postJson(
         "http://localhost/api/admin/campaigns",
         {
           name: "Launch week",
-          code: "launch10",
+          code: null,
           discountBasisPoints: 1000,
           ...campaignWindow(Date.now()),
         },
@@ -234,18 +238,18 @@ describe("phase 7C admin pricing/campaign routes", () => {
     assert.equal(create.status, 201);
     const created = (await create.json()) as {
       ok: boolean;
-      campaign: { id: number; status: string; code: string };
+      campaign: { id: number; status: string; code: string | null };
     };
     assert.equal(created.campaign.status, "active");
-    assert.equal(created.campaign.code, "LAUNCH10");
+    assert.equal(created.campaign.code, null);
     const id = created.campaign.id;
 
-    // Duplicate code conflicts.
-    const dupe = await campaignsPost(
+    // Explicit codes are rejected on create (explicit 400, never silent).
+    const coded = await campaignsPost(
       postJson(
         "http://localhost/api/admin/campaigns",
         {
-          name: "Copycat",
+          name: "Coded attempt",
           code: "LAUNCH10",
           discountBasisPoints: 500,
           ...campaignWindow(Date.now()),
@@ -253,7 +257,10 @@ describe("phase 7C admin pricing/campaign routes", () => {
         { cookie }
       )
     );
-    assert.equal(dupe.status, 409);
+    assert.equal(coded.status, 400);
+    assert.deepEqual(await coded.json(), {
+      error: { code: "invalid-request" },
+    });
 
     // Economic edit on a STARTED campaign is rejected (400, terms frozen).
     const frozen = await campaignPatch(
@@ -285,6 +292,54 @@ describe("phase 7C admin pricing/campaign routes", () => {
       )
     );
     assert.equal(malformed.status, 400);
+  });
+
+  it("legacy coded campaigns stay listed and disableable, but codes cannot be (re)set", async () => {
+    await seedAdmin();
+    const cookie = await loginCookie();
+    // Seeded at store level (the API no longer creates coded campaigns).
+    const now = Date.now();
+    const legacy = await getPricingStores().pricing.createCampaign({
+      name: "Legacy partner",
+      code: "PARTNER50",
+      basisPoints: 5000,
+      startsAt: new Date(now - HOUR_MS),
+      endsAt: new Date(now + 24 * HOUR_MS),
+      adminId: null,
+    });
+
+    // Still listed (readable) with its code visible for retirement.
+    const list = await campaignsGet(
+      new Request("http://localhost/api/admin/campaigns", {
+        headers: { cookie },
+      })
+    );
+    assert.equal(list.status, 200);
+    const listed = (await list.json()) as {
+      campaigns: Array<{ id: number; code: string | null }>;
+    };
+    assert.ok(
+      listed.campaigns.some(
+        (entry) => entry.id === legacy.id && entry.code === "PARTNER50"
+      )
+    );
+
+    // Disable works (retire safely).
+    const disabled = await campaignPatch(
+      patchJson(`http://localhost/api/admin/campaigns/${legacy.id}`, { enabled: false }, { cookie }),
+      { params: Promise.resolve({ id: String(legacy.id) }) }
+    );
+    assert.equal(disabled.status, 200);
+
+    // Setting a code is rejected explicitly.
+    const recode = await campaignPatch(
+      patchJson(`http://localhost/api/admin/campaigns/${legacy.id}`, { code: "NEWCODE1" }, { cookie }),
+      { params: Promise.resolve({ id: String(legacy.id) }) }
+    );
+    assert.equal(recode.status, 400);
+    assert.deepEqual(await recode.json(), {
+      error: { code: "invalid-request" },
+    });
   });
 
   it("unknown campaign ids 404", async () => {

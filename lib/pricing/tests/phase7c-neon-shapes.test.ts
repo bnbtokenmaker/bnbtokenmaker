@@ -3,21 +3,32 @@ import { describe, it } from "node:test";
 
 import {
   PgPricingStore,
+  buildPublishStatements,
   coerceRowId,
   logPricingStoreError,
+  type NeonTxClient,
 } from "../server/store";
 import { parsePricingPublishInput } from "../server/campaign-policy";
 
 /**
- * Regression tests for the production Phase 7C incident: admin pricing
- * publish + campaign create returned sanitized 503s while reads worked.
+ * Regression tests for the two production Phase 7C publish incidents.
  *
- * Root cause: raw db.execute() bypasses Drizzle column mapping, so BIGSERIAL
- * ids arrive as DECIMAL STRINGS on every real Postgres transport (Neon HTTP
- * parses OID 20 via parseBigInteger/keep-as-string; node-postgres does the
- * same). The store asserted `typeof id === "number"` and converted a healthy
- * insert into "unavailable". The fakes below reproduce the exact Neon HTTP
- * result shape ({ rows, rowCount }) with string ids.
+ * Incident 1 (fixed): raw db.execute() bypasses Drizzle column mapping, so
+ * BIGSERIAL ids arrive as DECIMAL STRINGS on every real Postgres transport.
+ *
+ * Incident 2 (fixed here): the publish CTE chained sibling data-modifying
+ * CTEs (UPDATE … WHERE id = (SELECT id FROM ins)) whose execution order is
+ * unpredictable per the PostgreSQL docs — and on the production engine
+ * (PG 18) the UPDATEs observably run before the INSERT they reference.
+ * Nothing matched, the audit entity_id came back NULL, and the whole
+ * statement aborted with 23502 on every attempt (sequence gaps with no new
+ * rows proved the INSERT ran and the statement then failed). Proven against
+ * the real engine with session-local temp objects (since rolled back).
+ *
+ * The fix publishes via an ordered Neon transaction batch where every
+ * statement is keyed by a pre-reserved version string, so no statement reads
+ * another statement's writes. The fakes below reproduce the exact Neon HTTP
+ * result shapes (string ids, { rows } results).
  */
 
 const SEED_FEES = {
@@ -59,9 +70,46 @@ function neonDb(executeRows: unknown[], selectRows: unknown[] = []) {
 
 /** Pg store with the builder-read seam stubbed (no live DB needed). */
 class NeonShapedStore extends PgPricingStore {
+  constructor(db: never, tx?: NeonTxClient) {
+    super(db, tx);
+  }
   override async getActiveVersion() {
     return null;
   }
+}
+
+/** Recording Neon transaction-batch fake. */
+function fakeTx(
+  recorded: string[],
+  results: Array<{ rows: unknown[] }>,
+  failWith?: unknown
+) {
+  const tag = (strings: TemplateStringsArray, ...values: unknown[]) => {
+    let text = "";
+    strings.forEach((part, index) => {
+      text += part;
+      if (index < values.length) text += `$${index + 1}`;
+    });
+    recorded.push(text);
+    return { text, values };
+  };
+  return Object.assign(tag, {
+    transaction: async (queries: readonly unknown[]) => {
+      assert.equal(queries.length, 5, "publish batch must hold 5 statements");
+      if (failWith !== undefined) throw failWith;
+      return results;
+    },
+  }) as unknown as NeonTxClient;
+}
+
+function publishBatchResults(finalRows: unknown[]) {
+  return [
+    { rows: [] },
+    { rows: [] },
+    { rows: [] },
+    { rows: [] },
+    { rows: finalRows },
+  ];
 }
 
 describe("phase 7C neon-shape regression — lib/pricing/server/store.ts", () => {
@@ -95,19 +143,25 @@ describe("phase 7C neon-shape regression — lib/pricing/server/store.ts", () =>
   });
 
   describe("publishVersion against Neon-shaped results", () => {
-    it("succeeds when RETURNING id arrives as a string (the prod shape)", async () => {
+    it("succeeds when the verify row arrives with a string id (the prod shape)", async () => {
+      const recorded: string[] = [];
       const store = new NeonShapedStore(
-        neonDb([{ id: "7", version: "v7" }])
+        neonDb([{ n: "7" }]),
+        fakeTx(recorded, publishBatchResults([{ id: "8", version: "v7" }]))
       );
       const created = await store.publishVersion({
         fees: parsePricingPublishInput({ ...SEED_FEES }).fees,
         adminId: 1,
       });
-      assert.deepEqual(created, { id: 7, version: "v7" });
+      assert.deepEqual(created, { id: 8, version: "v7" });
     });
 
-    it("still fails closed when no row comes back", async () => {
-      const store = new NeonShapedStore(neonDb([]));
+    it("still fails closed when the verify select comes back empty", async () => {
+      const recorded: string[] = [];
+      const store = new NeonShapedStore(
+        neonDb([{ n: "7" }]),
+        fakeTx(recorded, publishBatchResults([]))
+      );
       await assert.rejects(
         store.publishVersion({
           fees: parsePricingPublishInput({ ...SEED_FEES }).fees,
@@ -117,6 +171,93 @@ describe("phase 7C neon-shape regression — lib/pricing/server/store.ts", () =>
           error instanceof Error &&
           (error as { code?: string }).code === "unavailable"
       );
+    });
+
+    it("maps a concurrent-publish collision to conflict (retry-safe)", async () => {
+      const recorded: string[] = [];
+      const store = new NeonShapedStore(
+        neonDb([{ n: "7" }]),
+        fakeTx(recorded, publishBatchResults([]), { code: "23505" })
+      );
+      await assert.rejects(
+        store.publishVersion({
+          fees: parsePricingPublishInput({ ...SEED_FEES }).fees,
+          adminId: 1,
+        }),
+        (error: unknown) =>
+          error instanceof Error &&
+          (error as { code?: string }).code === "conflict"
+      );
+    });
+
+    it("fails closed when the sequence value is unusable", async () => {
+      const recorded: string[] = [];
+      const store = new NeonShapedStore(
+        neonDb([{ n: "not-a-number" }]),
+        fakeTx(recorded, publishBatchResults([{ id: "8", version: "v7" }]))
+      );
+      await assert.rejects(
+        store.publishVersion({
+          fees: parsePricingPublishInput({ ...SEED_FEES }).fees,
+          adminId: 1,
+        }),
+        (error: unknown) =>
+          error instanceof Error &&
+          (error as { code?: string }).code === "unavailable"
+      );
+      assert.equal(recorded.length, 0, "no batch may run without a version");
+    });
+  });
+
+  describe("publish statement structure (the PG18 ordering hazard)", () => {
+    function buildTexts(): string[] {
+      const recorded: string[] = [];
+      const tag = (strings: TemplateStringsArray, ...values: unknown[]) => {
+        let text = "";
+        strings.forEach((part, index) => {
+          text += part;
+          if (index < values.length) text += `$${index + 1}`;
+        });
+        recorded.push(text);
+        return { text, values };
+      };
+      buildPublishStatements(tag as unknown as NeonTxClient, {
+        baseFeeWei: "1",
+        burnFeeWei: "1",
+        mintFeeWei: "1",
+        pauseFeeWei: "1",
+        maxTxFeeWei: "1",
+        maxWalletFeeWei: "1",
+        blacklistFeeWei: "1",
+        whitelistFeeWei: "1",
+        adminId: 1,
+        version: "v7",
+        metadata: "{}",
+      });
+      return recorded;
+    }
+
+    it("emits exactly 5 ordered statements", () => {
+      assert.equal(buildTexts().length, 5);
+    });
+
+    it("no UPDATE reads another statement's writes (the broken shape)", () => {
+      const updates = buildTexts().filter((text) =>
+        /^\s*UPDATE/i.test(text)
+      );
+      assert.equal(updates.length, 2);
+      for (const update of updates) {
+        assert.ok(
+          !/\(\s*SELECT/i.test(update),
+          `UPDATE must not subquery any CTE: ${update.slice(0, 80)}`
+        );
+      }
+    });
+
+    it("keys every statement by the pre-reserved version and verifies the flip", () => {
+      const texts = buildTexts();
+      assert.ok(texts[0].includes("version,"));
+      assert.ok(texts[4].includes("status = 'active'"));
     });
   });
 

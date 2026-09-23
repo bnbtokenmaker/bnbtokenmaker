@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   basisPointsToPercentLabel,
   getPublicCampaign,
 } from "../server/public-campaign";
+import { formatDiscountPercent } from "../discount-percent";
 import {
   getPricingStores,
   resetPricingStoresForTests,
@@ -58,11 +61,30 @@ function quoteRequest(body: unknown): Request {
 
 describe("phase 7C discovery — public campaign topbar data", () => {
   describe("basisPointsToPercentLabel", () => {
-    it("renders exact percent labels without floats", () => {
-      assert.equal(basisPointsToPercentLabel(1000), "10.00");
-      assert.equal(basisPointsToPercentLabel(1250), "12.50");
+    it("renders exact trimmed percent labels without floats", () => {
+      assert.equal(basisPointsToPercentLabel(1000), "10");
+      assert.equal(basisPointsToPercentLabel(1250), "12.5");
+      assert.equal(basisPointsToPercentLabel(1225), "12.25");
       assert.equal(basisPointsToPercentLabel(1), "0.01");
-      assert.equal(basisPointsToPercentLabel(9000), "90.00");
+      assert.equal(basisPointsToPercentLabel(9000), "90");
+    });
+  });
+
+  describe("formatDiscountPercent (public trimmed labels)", () => {
+    it("removes unnecessary trailing zeros", () => {
+      assert.equal(formatDiscountPercent(1000), "10");
+      assert.equal(formatDiscountPercent(1050), "10.5");
+      assert.equal(formatDiscountPercent(1225), "12.25");
+      assert.equal(formatDiscountPercent(1), "0.01");
+      assert.equal(formatDiscountPercent(5), "0.05");
+      assert.equal(formatDiscountPercent(9000), "90");
+      assert.equal(formatDiscountPercent(0), "0");
+    });
+
+    it("rejects non-integer or negative input", () => {
+      for (const bad of [-1, 1.5, Number.NaN]) {
+        assert.throws(() => formatDiscountPercent(bad), Error);
+      }
     });
   });
 
@@ -98,7 +120,7 @@ describe("phase 7C discovery — public campaign topbar data", () => {
       assert.ok(found !== null);
       assert.equal(found?.name, "Launch Week");
       assert.equal(found?.discountBasisPoints, 1000);
-      assert.equal(found?.discountPercent, "10.00");
+      assert.equal(found?.discountPercent, "10");
       assert.equal(
         found?.endsAt,
         new Date(NOW.getTime() + HOUR).toISOString()
@@ -296,5 +318,69 @@ describe("phase 7C discovery — public campaign topbar data", () => {
       assert.equal(payload.error.code, "invalid-campaign-code");
       assert.ok(typeof payload.error.message === "string");
     });
+
+    it("active codeless campaign applies automatically: 0.050 -> 10% -> 0.045", async () => {
+      resetPricingStoresForTests();
+      const pricing = await seedVersion();
+      await pricing.createCampaign({
+        name: "Launch Week",
+        code: null,
+        basisPoints: 1000,
+        ...liveWindow(),
+        adminId: 1,
+      });
+      // No code supplied: the automatic campaign still applies server-side.
+      const response = await quotePost(quoteRequest({ features: [] }));
+      assert.equal(response.status, 201);
+      const payload = (await response.json()) as {
+        quote: {
+          subtotalWei: string;
+          discountWei: string;
+          totalWei: string;
+          campaign: { name: string; code: string | null } | null;
+        };
+      };
+      assert.equal(payload.quote.subtotalWei, "50000000000000000");
+      assert.equal(payload.quote.discountWei, "5000000000000000");
+      assert.equal(payload.quote.totalWei, "45000000000000000");
+      assert.equal(payload.quote.campaign?.name, "Launch Week");
+      assert.equal(payload.quote.campaign?.code, null);
+    });
+  });
+
+  describe("public promo-code removal", () => {
+    const SCOPED_FILES = [
+      "components/CreateBuilder.tsx",
+      "app/create/page.tsx",
+      "lib/deploy/quote-client.ts",
+    ];
+    const FORBIDDEN_TOKENS = [
+      "promoCode",
+      "promoNote",
+      "fetchPromoQuote",
+      "PromoQuoteOutcome",
+      "appliedCode",
+      "initialCampaignCode",
+      "requested.campaign",
+      "?campaign",
+    ];
+
+    it("all scoped sources exist (scan is not silently empty)", () => {
+      for (const file of SCOPED_FILES) {
+        const source = readFileSync(join(process.cwd(), file), "utf8");
+        assert.ok(source.length > 0, file);
+      }
+    });
+
+    for (const token of FORBIDDEN_TOKENS) {
+      it(`public paths contain no ${token}`, () => {
+        const hits: string[] = [];
+        for (const file of SCOPED_FILES) {
+          const source = readFileSync(join(process.cwd(), file), "utf8");
+          if (source.includes(token)) hits.push(file);
+        }
+        assert.deepEqual(hits, []);
+      });
+    }
   });
 });

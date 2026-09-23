@@ -43,17 +43,6 @@ export default async function Page({
   const requested = await searchParams;
   const initialDraft = resolveDraft(requested);
 
-  // Optional ?campaign=CODE from operator-shared links. Passed through RAW
-  // and untrusted: the configurator validates it through the authoritative
-  // quote API exactly like a typed code. Only the code travels — never money.
-  const rawCampaign = requested.campaign;
-  const initialCampaignCode =
-    typeof rawCampaign === "string"
-      ? rawCampaign
-      : Array.isArray(rawCampaign) && typeof rawCampaign[0] === "string"
-        ? rawCampaign[0]
-        : null;
-
   // Phase 7C: the configurator prices from the ACTIVE DB pricing version plus
   // the currently-applicable campaign (server time). Fail closed: without an
   // authoritative snapshot the page renders an unavailable state instead of
@@ -163,7 +152,6 @@ export default async function Page({
         serverQuote={serverQuote}
         initialDraft={initialDraft}
         activeCampaign={activeCampaign}
-        initialCampaignCode={initialCampaignCode}
       />
     </div>
   </section>

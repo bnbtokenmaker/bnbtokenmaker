@@ -36,10 +36,7 @@ import {
 import type { FeatureSelection, PresetId } from "../lib/pricing/presets";
 import { DRAFT_DEFAULTS, SUPPLY_QUICK_PRESETS, formatSupplyInput } from "../lib/draft";
 import type { DraftConfig } from "../lib/draft";
-import {
-  fetchPromoQuote,
-  type AuthoritativeQuote,
-} from "../lib/deploy/quote-client";
+import { formatDiscountPercent } from "../lib/pricing/discount-percent";
 import { useSupplyField } from "./useSupplyField";
 
 const SUMMARY_LABEL: Record<PaidFeatureId, string> = {
@@ -115,13 +112,6 @@ type CreateBuilderProps = {
    * transaction. Null when no campaign is currently active.
    */
   activeCampaign?: ActiveCampaignEstimate | null;
-  /**
-   * Raw campaign code from ?campaign=CODE (operator-shared links). Untrusted:
-   * prefilled into the promo input and validated through the authoritative
-   * quote API like any typed code — never assumed valid from the URL, and
-   * only the code travels (never money).
-   */
-  initialCampaignCode?: string | null;
 };
 
 export type ActiveCampaignEstimate = {
@@ -131,13 +121,6 @@ export type ActiveCampaignEstimate = {
   /** Real campaign end, ISO string (server-provided). */
   endsAt: string;
 };
-
-/** Exact "10.00" percent label from integer basis points (no floats). */
-function basisPointsLabel(basisPoints: number): string {
-  const whole = Math.floor(basisPoints / 100);
-  const frac = String(basisPoints % 100).padStart(2, "0");
-  return `${whole}.${frac}`;
-}
 
 export type SummaryActionsProps = {
   walletConnected: boolean;
@@ -272,7 +255,6 @@ export function CreateBuilder({
   serverQuote,
   initialDraft = DRAFT_DEFAULTS,
   activeCampaign = null,
-  initialCampaignCode = null,
 }: CreateBuilderProps) {
   // Restore the tab-scoped draft carried back from /deploy ("Edit token").
   // Absent on fresh tabs; cleared by "Create another token" for a clean start.
@@ -381,74 +363,6 @@ export function CreateBuilder({
       );
     }
   }, [pricingState]);
-
-  // Promo-code flow (coded campaigns). The code travels to the authoritative
-  // quote API and back; displayed money always comes from the server DTO,
-  // never from local math or the URL.
-  type PromoState =
-    | { status: "idle" }
-    | { status: "loading" }
-    | { status: "applied"; quote: AuthoritativeQuote }
-    | { status: "invalid" }
-    | { status: "unavailable" };
-  const [codeInput, setCodeInput] = useState(() => initialCampaignCode ?? "");
-  // A ?campaign=CODE link starts applied exactly like a typed code — still
-  // validated through the API by the effect below, never trusted on arrival.
-  const [appliedCode, setAppliedCode] = useState<string | null>(() =>
-    typeof initialCampaignCode === "string" &&
-    initialCampaignCode.trim().length > 0
-      ? initialCampaignCode
-      : null
-  );
-  const [promo, setPromo] = useState<PromoState>({ status: "idle" });
-  const promoRequestRef = useRef(0);
-
-  const featureKey = useMemo(
-    () => selectedFeatureIds(feats).join(","),
-    [feats]
-  );
-
-  // Revalidate the applied code against the CURRENT selection (debounced).
-  // While refetching, the previous authoritative quote stays visible; all
-  // state sets happen in async callbacks or event handlers, never
-  // synchronously in the effect body.
-  useEffect(() => {
-    if (appliedCode === null) return;
-    const code = appliedCode;
-    const ids = featureKey.length > 0 ? featureKey.split(",") : [];
-    const requestId = ++promoRequestRef.current;
-    const timer = setTimeout(() => {
-      void (async () => {
-        const outcome = await fetchPromoQuote(ids, code);
-        if (promoRequestRef.current !== requestId) return;
-        if (outcome.ok) {
-          setPromo({ status: "applied", quote: outcome.quote });
-        } else {
-          setPromo({
-            status: outcome.reason === "invalid-code" ? "invalid" : "unavailable",
-          });
-        }
-      })();
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [appliedCode, featureKey]);
-
-  function applyPromoCode(): void {
-    const raw = codeInput.trim();
-    if (raw.length === 0) return;
-    promoRequestRef.current += 1;
-    setAppliedCode(raw);
-    setPromo({ status: "loading" });
-  }
-
-  function clearPromoCode(): void {
-    promoRequestRef.current += 1;
-    setAppliedCode(null);
-    setCodeInput("");
-    setPromo({ status: "idle" });
-  }
-
-  const promoQuote = promo.status === "applied" ? promo.quote : null;
 
   const preset: PresetId = presetForSelection(feats);
 
@@ -956,7 +870,6 @@ export function CreateBuilder({
           <hr className="sum-sep" />
           <div className="sum-label">Pricing</div>
           {result !== null ? (
-            <>
             <div className="price-break">
               <div className="price-row"><span>Base BEP-20 Token</span><span>{formatWeiBnbDisplay(result.baseFeeWei)} BNB</span></div>
               {result.lineItems.map((item) => (
@@ -965,68 +878,22 @@ export function CreateBuilder({
                   <span>+{formatWeiBnbDisplay(item.priceWei)} BNB</span>
                 </div>
               ))}
-              {promoQuote !== null && promoQuote.campaign ? (
-                <>
-                  <div className="price-row"><span>Subtotal</span><span><s>{formatWeiBnbDisplay(BigInt(promoQuote.subtotalWei))} BNB</s></span></div>
-                  <div className="price-row"><span>{promoQuote.campaign.name} (−{basisPointsLabel(promoQuote.campaign.discountBasisPoints)}%)</span><span>−{formatWeiBnbDisplay(BigInt(promoQuote.discountWei))} BNB</span></div>
-                </>
-              ) : campaignEstimate !== null && activeCampaign !== null ? (
+              {campaignEstimate !== null && activeCampaign !== null ? (
                 <>
                   <div className="price-row"><span>Subtotal</span><span><s>{formatWeiBnbDisplay(result.subtotalWei)} BNB</s></span></div>
-                  <div className="price-row"><span>Campaign “{activeCampaign.name}” (−{basisPointsLabel(activeCampaign.discountBasisPoints)}%)</span><span>−{formatWeiBnbDisplay(campaignEstimate.discountWei)} BNB</span></div>
+                  <div className="price-row"><span>Campaign “{activeCampaign.name}” (−{formatDiscountPercent(activeCampaign.discountBasisPoints)}%)</span><span>−{formatWeiBnbDisplay(campaignEstimate.discountWei)} BNB</span></div>
                 </>
               ) : null}
               <div className="price-total">
                 <span className="lbl">Standard price</span>
-                <span className="val" id="pTotal" data-pricing-version={promoQuote !== null ? promoQuote.pricingVersion : serverQuote.pricingVersion} data-quote-state={promoQuote !== null ? "quoted" : "estimate"}>{formatWeiBnbDisplay(promoQuote !== null ? BigInt(promoQuote.totalWei) : campaignEstimate !== null ? campaignEstimate.totalWei : result.totalPlatformFeeWei)} BNB</span>
+                <span className="val" id="pTotal" data-pricing-version={serverQuote.pricingVersion} data-quote-state="estimate">{formatWeiBnbDisplay(campaignEstimate !== null ? campaignEstimate.totalWei : result.totalPlatformFeeWei)} BNB</span>
               </div>
-              {promoQuote !== null && promoQuote.campaign ? (
-                <p className="gas-note">{promoQuote.campaign.endsAt !== null ? `Promo ends ${new Date(promoQuote.campaign.endsAt).toUTCString()}. ` : ""}Authoritative server quote — re-quoted again before deployment.</p>
-              ) : campaignEstimate !== null && activeCampaign !== null ? (
+              {campaignEstimate !== null && activeCampaign !== null ? (
                 <p className="gas-note">Campaign discount ends {new Date(activeCampaign.endsAt).toUTCString()}. The final price is re-quoted from the server before deployment.</p>
               ) : null}
               <div className="price-row"><span>Testnet platform fee</span><span>0 BNB</span></div>
               <p className="gas-note" id="feeNote">Reference product price — testnet deployments are fee-free (0 BNB platform fee + network gas).</p>
             </div>
-            <div style={{ marginTop: ".7rem" }}>
-              <div className="price-row" style={{ alignItems: "center" }}>
-                <label htmlFor="promoCode"><span>Promo code</span></label>
-                {appliedCode !== null ? (
-                  <span className="mono" style={{ fontSize: ".72rem" }}>“{appliedCode.toUpperCase()}” applied</span>
-                ) : null}
-              </div>
-              <div style={{ display: "flex", gap: ".5rem", marginTop: ".35rem" }}>
-                <input
-                  id="promoCode"
-                  type="text"
-                  autoComplete="off"
-                  placeholder="e.g. LAUNCH10"
-                  value={codeInput}
-                  onChange={(event) => setCodeInput(event.target.value)}
-                  disabled={promo.status === "loading"}
-                  aria-describedby="promoNote"
-                  style={{ flex: 1, minWidth: 0, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: "8px", padding: ".6rem .75rem", color: "var(--text)", font: "500 .85rem/1.2 var(--font-mono)" }}
-                />
-                {appliedCode !== null ? (
-                  <button className="btn btn-ghost" type="button" onClick={clearPromoCode}>Remove</button>
-                ) : (
-                  <button className="btn btn-ghost" type="button" onClick={applyPromoCode} disabled={codeInput.trim().length === 0 || promo.status === "loading"}>Apply</button>
-                )}
-              </div>
-              <div id="promoNote" aria-live="polite">
-                {promo.status === "loading" ||
-                (appliedCode !== null && promo.status === "idle") ? (
-                  <p className="gas-note">Checking code…</p>
-                ) : null}
-                {promo.status === "invalid" ? (
-                  <p className="gas-note" role="alert">That code isn&apos;t active right now — check the code or continue without it.</p>
-                ) : null}
-                {promo.status === "unavailable" ? (
-                  <p className="gas-note" role="alert">Price check unavailable — showing the standard estimate.</p>
-                ) : null}
-              </div>
-            </div>
-            </>
           ) : (
             <div className="warn" id="pricingFault" role="alert">
               <i className="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>Pricing is temporarily unavailable. Please try again later.

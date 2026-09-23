@@ -62,6 +62,15 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  // Codeless-only policy: new campaigns are always automatic. Reject an
+  // explicit code rather than silently dropping operator intent.
+  if (create.code !== null) {
+    return Response.json(
+      { error: { code: "invalid-request" } },
+      { status: 400 }
+    );
+  }
+
   try {
     const row = await getPricingStores().pricing.createCampaign({
       name: create.name,

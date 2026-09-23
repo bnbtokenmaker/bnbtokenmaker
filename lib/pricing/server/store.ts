@@ -6,12 +6,20 @@
  * tsx unit-test runtime. Browser misuse is blocked by getDb()'s own guard
  * plus the fact that these modules only run in routes/server components.
  *
- * ATOMICITY: Neon HTTP has no interactive transactions, so every mutation
- * that must be atomic (publish version + deactivate previous + activate new
- * + audit; campaign write + audit) is a SINGLE SQL statement built as a CTE
- * chain — one round-trip, all-or-nothing. A partial unique index
- * (`pricing_versions_single_active`) backs the single-active invariant at the
- * database level as well.
+ * ATOMICITY: Neon HTTP has no interactive transactions, so multi-step
+ * mutations run as ordered statement batches in a single transaction via
+ * `sql.transaction()` (see getNeonTxClient). Campaign writes additionally
+ * keep a single-statement CTE shape, which is safe there: one writer plus
+ * INSERT-enclosed reads (proven on the production engine).
+ *
+ * WHY NOT sibling data-modifying CTEs for the pricing switch: PostgreSQL
+ * executes WITH sub-statements in an unpredictable order (documented), and
+ * on the production engine (PG 18) the price-switch UPDATEs observably run
+ * before the INSERT they reference — matching zero rows, which then NULLed
+ * the audit entity_id and aborted the whole statement (23502) on every
+ * attempt. The switch is therefore SEQUENTIAL statements (insert, flip old,
+ * flip new, audit, verify), each keyed by a client-known version string, so
+ * no statement ever reads another statement's uncommitted writes.
  *
  * DRIVER SHAPES: raw `db.execute()` results bypass Drizzle's column mapping,
  * so Postgres int8 (BIGSERIAL `id`) arrives as a DECIMAL STRING on both
@@ -29,6 +37,7 @@
 
 import { and, desc, eq, gt, lte, sql } from "drizzle-orm";
 import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
+import { neon } from "@neondatabase/serverless";
 
 import { DatabaseUnavailableError, getDb } from "../../db/client";
 import type * as schema from "../../db/schema";
@@ -145,6 +154,92 @@ export function logPricingStoreError(op: string, error: unknown): void {
   }
 }
 
+/** Opaque query object produced by the Neon template tag. */
+export type NeonTxQuery = unknown;
+
+/** Minimal shape of the @neondatabase/serverless query function we use. */
+export type NeonTxClient = {
+  (strings: TemplateStringsArray, ...values: unknown[]): NeonTxQuery;
+  transaction: (
+    queries: readonly NeonTxQuery[]
+  ) => Promise<Array<{ rows: unknown[] }>>;
+};
+
+/**
+ * Builds the raw Neon transaction client from DATABASE_URL (HTTPS only —
+ * same transport as the Drizzle Neon HTTP handle). Throws
+ * DatabaseUnavailableError when misconfigured; the URL value itself is never
+ * logged or exposed here.
+ */
+export function getNeonTxClient(): NeonTxClient {
+  if (typeof window !== "undefined") {
+    throw new DatabaseUnavailableError("must never run in the browser");
+  }
+  const connectionString = (process.env.DATABASE_URL ?? "").trim();
+  if (!connectionString) {
+    throw new DatabaseUnavailableError("DATABASE_URL is not set");
+  }
+  return neon(connectionString) as unknown as NeonTxClient;
+}
+
+export type PublishStatementInput = {
+  baseFeeWei: string;
+  burnFeeWei: string;
+  mintFeeWei: string;
+  pauseFeeWei: string;
+  maxTxFeeWei: string;
+  maxWalletFeeWei: string;
+  blacklistFeeWei: string;
+  whitelistFeeWei: string;
+  adminId: number | null;
+  /** Client-known version string ('v' + reserved sequence value). */
+  version: string;
+  /** Audit summary JSON (safe fields only). */
+  metadata: string;
+};
+
+/**
+ * Builds the ordered publish statements for one Neon transaction batch.
+ *
+ * Every statement is keyed by the pre-reserved `version` string, so no
+ * statement reads another statement's writes — the shape that broke on the
+ * production engine (sibling data-modifying CTEs observing unpredictable
+ * execution order) cannot recur here. The closing SELECT verifies the flip
+ * landed; an empty result fails closed.
+ */
+export function buildPublishStatements(
+  tx: NeonTxClient,
+  input: PublishStatementInput
+): NeonTxQuery[] {
+  return [
+    tx`INSERT INTO pricing_versions (
+        version, base_fee_wei, burn_fee_wei, mint_fee_wei, pause_fee_wei,
+        maxtx_fee_wei, maxwallet_fee_wei, blacklist_fee_wei,
+        whitelist_fee_wei, created_by_admin_id
+      )
+      VALUES (
+        ${input.version}, ${input.baseFeeWei}, ${input.burnFeeWei},
+        ${input.mintFeeWei}, ${input.pauseFeeWei},
+        ${input.maxTxFeeWei}, ${input.maxWalletFeeWei},
+        ${input.blacklistFeeWei}, ${input.whitelistFeeWei},
+        ${input.adminId}
+      )`,
+    tx`UPDATE pricing_versions SET status = 'inactive'
+      WHERE status = 'active' AND version <> ${input.version}`,
+    tx`UPDATE pricing_versions SET status = 'active', activated_at = now()
+      WHERE version = ${input.version}`,
+    tx`INSERT INTO admin_audit_events (
+        admin_user_id, action, entity_type, entity_id, metadata
+      )
+      VALUES (
+        ${input.adminId}, 'pricing_version_published',
+        'pricing_version', ${input.version}, ${input.metadata}::jsonb
+      )`,
+    tx`SELECT id, version FROM pricing_versions
+      WHERE version = ${input.version} AND status = 'active'`,
+  ];
+}
+
 export type PublishVersionInput = {
   fees: PricingFeeMap;
   adminId: number | null;
@@ -244,12 +339,15 @@ export class PgPricingStore implements PricingStore {
   /**
    * @param injectedDb test seam: a Neon-shaped executor. Production always
    * omits it (lazy getDb() per call, so env/test resets stay effective).
+   * @param injectedTx test seam: a Neon transaction-batch client. Production
+   * always omits it (built lazily from DATABASE_URL per publish).
    */
   constructor(
     private injectedDb?: Pick<
       NeonHttpDatabase<typeof schema>,
       "select" | "execute"
-    >
+    >,
+    private injectedTx?: NeonTxClient
   ) {}
 
   private database(): Pick<
@@ -257,6 +355,10 @@ export class PgPricingStore implements PricingStore {
     "select" | "execute"
   > {
     return this.injectedDb ?? getDb();
+  }
+
+  private txClient(): NeonTxClient {
+    return this.injectedTx ?? getNeonTxClient();
   }
 
   async getActiveVersion(): Promise<PricingVersionRow | null> {
@@ -314,58 +416,72 @@ export class PgPricingStore implements PricingStore {
           whitelist: weiOf(input.fees.whitelist),
         },
       });
-      // Single statement: insert the immutable version, deactivate the
-      // previous active row, activate the new row, and audit — atomically.
-      // The version identifier is assigned database-side ('v' || nextval).
-      const result = await db.execute(sql`
-        WITH ins AS (
-          INSERT INTO pricing_versions (
-            base_fee_wei, burn_fee_wei, mint_fee_wei, pause_fee_wei,
-            maxtx_fee_wei, maxwallet_fee_wei, blacklist_fee_wei,
-            whitelist_fee_wei, created_by_admin_id
-          )
-          VALUES (
-            ${weiOf(input.fees.base)}, ${weiOf(input.fees.burn)},
-            ${weiOf(input.fees.mint)}, ${weiOf(input.fees.pause)},
-            ${weiOf(input.fees.maxTx)}, ${weiOf(input.fees.maxWallet)},
-            ${weiOf(input.fees.blacklist)}, ${weiOf(input.fees.whitelist)},
-            ${input.adminId}
-          )
-          RETURNING id, version
-        ),
-        deactivate AS (
-          UPDATE pricing_versions SET status = 'inactive'
-          WHERE status = 'active' AND id <> (SELECT id FROM ins)
-        ),
-        activate AS (
-          UPDATE pricing_versions SET status = 'active', activated_at = now()
-          WHERE id = (SELECT id FROM ins)
-          RETURNING id, version
-        ),
-        audit AS (
-          INSERT INTO admin_audit_events (
-            admin_user_id, action, entity_type, entity_id, metadata
-          )
-          SELECT ${input.adminId}, 'pricing_version_published',
-                 'pricing_version', (SELECT version FROM activate),
-                 (${metadata}::jsonb)
-        )
-        SELECT id, version FROM activate
-      `);
-      const rows = resultRows<{ id: unknown; version: unknown }>(result);
-      const created = rows[0];
-      // Raw execute() bypasses Drizzle column mapping: int8 ids arrive as
-      // digit strings on every real Postgres transport (Neon HTTP and pg).
-      const createdId = coerceRowId(created?.id);
-      if (created === undefined || createdId === null) {
+      // Reserve the version identifier up front. The sequence is atomic, so
+      // concurrent publishers receive distinct numbers (gaps on failure are
+      // harmless — versions are opaque identifiers). This MUST match the
+      // column DEFAULT ('v' || nextval('pricing_version_seq')); the bootstrap
+      // CLI relies on the default, the app passes it explicitly.
+      const nextRows = resultRows<{ n: unknown }>(
+        await db.execute(sql`SELECT nextval('pricing_version_seq') AS n`)
+      );
+      const seq = coerceRowId(nextRows[0]?.n);
+      if (seq === null) {
         throw new PricingStoreError(
           "unavailable",
           503,
           "pricing service is temporarily unavailable"
         );
       }
-      return { id: createdId, version: String(created.version) };
+      const version = `v${seq}`;
+      // Ordered transaction batch: insert (inactive), flip old, flip new,
+      // audit, verify. Sequential commands each observe prior effects, so —
+      // unlike sibling data-modifying CTEs — execution order is guaranteed
+      // and the partial-unique invariant can never transiently break.
+      const tx = this.txClient();
+      const results = await tx.transaction(
+        buildPublishStatements(tx, {
+          baseFeeWei: weiOf(input.fees.base),
+          burnFeeWei: weiOf(input.fees.burn),
+          mintFeeWei: weiOf(input.fees.mint),
+          pauseFeeWei: weiOf(input.fees.pause),
+          maxTxFeeWei: weiOf(input.fees.maxTx),
+          maxWalletFeeWei: weiOf(input.fees.maxWallet),
+          blacklistFeeWei: weiOf(input.fees.blacklist),
+          whitelistFeeWei: weiOf(input.fees.whitelist),
+          adminId: input.adminId,
+          version,
+          metadata,
+        })
+      );
+      const verifyRows = resultRows<{ id: unknown; version: unknown }>(
+        results[4]
+      );
+      const verified = verifyRows[0];
+      // Raw results bypass Drizzle mapping: int8 ids arrive as digit strings
+      // on every real Postgres transport (Neon HTTP and pg).
+      const createdId = coerceRowId(verified?.id);
+      if (
+        verified === undefined ||
+        createdId === null ||
+        String(verified.version) !== version
+      ) {
+        throw new PricingStoreError(
+          "unavailable",
+          503,
+          "pricing service is temporarily unavailable"
+        );
+      }
+      return { id: createdId, version };
     } catch (error) {
+      if (isUniqueViolation(error)) {
+        // Genuine concurrent-publish collision (partial unique index): the
+        // batch aborted atomically, so a retry is safe.
+        throw new PricingStoreError(
+          "conflict",
+          409,
+          "pricing was published concurrently; please review and retry"
+        );
+      }
       logPricingStoreError("publishVersion", error);
       throw mapDbError(error);
     }

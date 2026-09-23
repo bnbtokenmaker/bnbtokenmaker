@@ -194,51 +194,5 @@ export function fetchAuthoritativeQuote(
   return run();
 }
 
-export type PromoQuoteOutcome =
-  | { ok: true; quote: AuthoritativeQuote }
-  | { ok: false; reason: "invalid-code" | "unavailable" };
-
-/**
- * Promo-code validation for the /create configurator (display only — the
- * deploy flow re-quotes authoritatively before any transaction).
- *
- * Unlike fetchAuthoritativeQuote it never throws: a rejected code maps to
- * "invalid-code" (friendly "not active" copy), while network/empty/5xx and
- * malformed shapes map to "unavailable" (fall back to the standard
- * estimate). Raw server payloads never surface.
- */
-export async function fetchPromoQuote(
-  features: ReadonlyArray<string>,
-  code: string
-): Promise<PromoQuoteOutcome> {
-  let response: Response;
-  try {
-    response = await fetch("/api/pricing/quote", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ features: [...features], campaignCode: code }),
-    });
-  } catch {
-    return { ok: false, reason: "unavailable" };
-  }
-  let payload: unknown = null;
-  try {
-    payload = await response.json();
-  } catch {
-    return { ok: false, reason: "unavailable" };
-  }
-  if (response.status === 400) {
-    return { ok: false, reason: "invalid-code" };
-  }
-  if (!response.ok) {
-    return { ok: false, reason: "unavailable" };
-  }
-  const parsed = parseQuotePayload(payload);
-  if (!parsed) {
-    return { ok: false, reason: "unavailable" };
-  }
-  return { ok: true, quote: parsed };
-}
-
 /** The testnet deployment itself is fee-free; the quote is shown for transparency. */
 export const TESTNET_PLATFORM_FEE_WEI = 0n;

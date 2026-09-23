@@ -93,8 +93,10 @@ export default async function AdminCampaignsPage() {
       <div className={styles.card}>
         <h2>Create campaign</h2>
         <p className={`${styles.muted} ${styles.small}`} style={{ marginBottom: "1rem" }}>
-          Whole-quote discount, maximum 90%. Leave the code empty for an automatic campaign,
-          or set a code visitors must enter. Maximum lifetime 366 days.
+          Whole-quote discount, maximum 90%. New campaigns are always
+          automatic (codeless) and apply to every quote while active.
+          Maximum lifetime 366 days. Legacy coded rows remain listed below
+          and can be disabled to retire them.
         </p>
         <CreateCampaignForm />
       </div>
