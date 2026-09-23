@@ -76,3 +76,22 @@
   .hero .h1-net{animation:none}
   .hp-blog:hover,.why-item:hover,.trust-item:hover,.sec-cta .sec-cta-main:hover{transform:none}
 }
+
+/* ===== SITE-WIDE CAMPAIGN TOPBAR (Phase 7C discovery) =====
+   Rendered by components/CampaignTopbar ONLY when a real codeless campaign
+   is active (driven by /api/campaigns/active). Renders nothing otherwise,
+   so no spacing is reserved. Same premium gold vocabulary as the homepage
+   announcement bar. Sits above the sticky navbar and scrolls away. */
+.announce{position:relative;z-index:60;background:var(--accent);color:var(--accent-ink)}
+.announce-link{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:.35rem .9rem;padding:.5rem 1rem;text-align:center;transition:background-color .18s ease}
+.announce-link:hover{background:var(--accent-hover)}
+.announce-sep{color:rgba(23,18,8,.45);font-weight:700}
+.announce-season{font:700 .72rem/1 var(--font-mono);letter-spacing:.14em;text-transform:uppercase}
+.announce-offer{font:500 .72rem/1 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:rgba(23,18,8,.85)}
+.announce-go{display:inline-flex;align-items:center;gap:.4rem;font:700 .7rem/1 var(--font-mono);letter-spacing:.14em;text-transform:uppercase}
+.announce-go i{font-size:.62rem}
+@media (max-width:640px){
+  .announce-link{gap:.3rem .55rem;padding:.45rem .8rem}
+  .announce-season,.announce-offer,.announce-go{font-size:.64rem}
+  .announce-sep{display:none}
+}

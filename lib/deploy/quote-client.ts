@@ -151,17 +151,27 @@ function parseQuoteCampaign(input: unknown): AuthoritativeQuoteCampaign | null {
  * Fetch a fresh authoritative quote for a feature selection.
  * Throws DeployFlowError("quote-stale") when the server cannot confirm a
  * price — the transaction must not be sent without one.
+ *
+ * The optional campaignCode is forwarded verbatim; the server normalizes and
+ * validates it. Only selection intent travels — never money.
  */
 export function fetchAuthoritativeQuote(
-  features: ReadonlyArray<string>
+  features: ReadonlyArray<string>,
+  campaignCode?: string | null
 ): Promise<AuthoritativeQuote> {
   const run = async (): Promise<AuthoritativeQuote> => {
+    const body: { features: string[]; campaignCode?: string } = {
+      features: [...features],
+    };
+    if (typeof campaignCode === "string" && campaignCode.length > 0) {
+      body.campaignCode = campaignCode;
+    }
     let response: Response;
     try {
       response = await fetch("/api/pricing/quote", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ features: [...features] }),
+        body: JSON.stringify(body),
       });
     } catch {
       throw new DeployFlowError("quote-stale", "quote request unreachable");
@@ -182,6 +192,52 @@ export function fetchAuthoritativeQuote(
     return parsed;
   };
   return run();
+}
+
+export type PromoQuoteOutcome =
+  | { ok: true; quote: AuthoritativeQuote }
+  | { ok: false; reason: "invalid-code" | "unavailable" };
+
+/**
+ * Promo-code validation for the /create configurator (display only — the
+ * deploy flow re-quotes authoritatively before any transaction).
+ *
+ * Unlike fetchAuthoritativeQuote it never throws: a rejected code maps to
+ * "invalid-code" (friendly "not active" copy), while network/empty/5xx and
+ * malformed shapes map to "unavailable" (fall back to the standard
+ * estimate). Raw server payloads never surface.
+ */
+export async function fetchPromoQuote(
+  features: ReadonlyArray<string>,
+  code: string
+): Promise<PromoQuoteOutcome> {
+  let response: Response;
+  try {
+    response = await fetch("/api/pricing/quote", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ features: [...features], campaignCode: code }),
+    });
+  } catch {
+    return { ok: false, reason: "unavailable" };
+  }
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    return { ok: false, reason: "unavailable" };
+  }
+  if (response.status === 400) {
+    return { ok: false, reason: "invalid-code" };
+  }
+  if (!response.ok) {
+    return { ok: false, reason: "unavailable" };
+  }
+  const parsed = parseQuotePayload(payload);
+  if (!parsed) {
+    return { ok: false, reason: "unavailable" };
+  }
+  return { ok: true, quote: parsed };
 }
 
 /** The testnet deployment itself is fee-free; the quote is shown for transparency. */

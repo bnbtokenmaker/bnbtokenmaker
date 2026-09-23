@@ -4,6 +4,7 @@ import "./wallet.css";
 import { Manrope, Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import Script from "next/script";
 import { Header } from "../components/Header";
+import { CampaignTopbar } from "../components/CampaignTopbar";
 import { Footer } from "../components/Footer";
 import { GoogleAnalytics } from "../components/GoogleAnalytics";
 import { HeaderBehavior } from "../components/HeaderBehavior";
@@ -91,6 +92,7 @@ export default function RootLayout({
           <a className="skip" href="#main">
             Skip to content
           </a>
+          <CampaignTopbar />
           <Header />
           <RouteTransition>{children}</RouteTransition>
           <Footer />
