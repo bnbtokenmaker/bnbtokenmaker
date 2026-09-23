@@ -6,8 +6,14 @@ import { CreateBuilder } from "../../components/CreateBuilder";
 import { NetState } from "../../components/wallet/NetState";
 import { resolveDraft } from "../../lib/draft";
 import type { DraftQuery } from "../../lib/draft";
-import { getCurrentPricingConfig, currentPricingSource } from "../../lib/pricing/server/current-pricing-source";
-import { quotePlatformFee, toQuoteDto } from "../../lib/pricing/server/quote";
+import {
+  getPricingStores,
+  loadAuthoritativeSnapshot,
+} from "../../lib/pricing/server/store";
+import {
+  quoteFromSnapshot,
+  toQuoteDto,
+} from "../../lib/pricing/server/quote";
 import { PRESETS, selectedFeatureIds } from "../../lib/pricing/presets";
 import { toPricingConfigDto, validateConfig } from "../../lib/pricing";
 
@@ -36,24 +42,78 @@ export default async function Page({
 }) {
   const requested = await searchParams;
   const initialDraft = resolveDraft(requested);
-  const pricingConfig = getCurrentPricingConfig();
-  const configValidation = validateConfig(pricingConfig);
-  if (!configValidation.ok) {
-    throw new Error(
-      `Invalid development pricing config: ${configValidation.errors.map((error) => error.code).join(", ")}`
+
+  // Phase 7C: the configurator prices from the ACTIVE DB pricing version plus
+  // the currently-applicable campaign (server time). Fail closed: without an
+  // authoritative snapshot the page renders an unavailable state instead of
+  // invented prices. (Outside production with no DATABASE_URL, an explicit
+  // static development fallback keeps local work operable.)
+  let snapshot;
+  try {
+    snapshot = await loadAuthoritativeSnapshot(getPricingStores(), {
+      now: new Date(),
+    });
+  } catch {
+    return (
+      <>
+        <JsonLd data={CREATE_WEBSITE} />
+        <section className="app" id="top">
+          <div className="container">
+            <header className="app-head">
+              <div className="app-head-row">
+                <div className="app-head-copy">
+                  <div className="kicker"><span className="dot"></span>Create BEP-20 Token</div>
+                  <h1>Configure your token, then let your wallet ship it.</h1>
+                </div>
+              </div>
+            </header>
+            <div className="warn" role="alert">
+              Pricing is temporarily unavailable. Please try again in a moment —
+              no price is shown rather than a guessed one.
+            </div>
+          </div>
+        </section>
+      </>
     );
   }
-  const pricingConfigDto = toPricingConfigDto(pricingConfig);
 
+  const configValidation = validateConfig(snapshot.config);
+  if (!configValidation.ok) {
+    throw new Error(
+      `Invalid pricing config: ${configValidation.errors.map((error) => error.code).join(", ")}`
+    );
+  }
+  const pricingConfigDto = toPricingConfigDto(snapshot.config);
+
+  const campaignMeta = snapshot.campaign
+    ? {
+        id: snapshot.campaign.id,
+        name: snapshot.campaign.name,
+        code: snapshot.campaign.code,
+        discountBasisPoints: snapshot.campaign.basisPoints,
+      }
+    : undefined;
   const serverQuote = toQuoteDto(
-    quotePlatformFee(currentPricingSource, selectedFeatureIds(PRESETS.standard))
+    quoteFromSnapshot(snapshot, selectedFeatureIds(PRESETS.standard)),
+    campaignMeta
   );
+
+  // Sanitized public campaign summary for the live estimate breakdown.
+  // Display-only: the deploy flow re-quotes authoritatively server-side.
+  const activeCampaign = snapshot.campaign
+    ? {
+        name: snapshot.campaign.name,
+        code: snapshot.campaign.code,
+        discountBasisPoints: snapshot.campaign.basisPoints,
+        endsAt: snapshot.campaign.endsAt.toISOString(),
+      }
+    : null;
 
   return (
     <>
       <JsonLd data={CREATE_WEBSITE} />
 
-
+ 
   <section className="app" id="top">
     <div className="container">
       <header className="app-head">
@@ -91,6 +151,7 @@ export default async function Page({
         pricingConfigDto={pricingConfigDto}
         serverQuote={serverQuote}
         initialDraft={initialDraft}
+        activeCampaign={activeCampaign}
       />
     </div>
   </section>

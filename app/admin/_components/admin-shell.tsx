@@ -16,7 +16,7 @@ export function AdminShell({
   children,
 }: {
   identifier: string;
-  active: "overview" | "deployments";
+  active: "overview" | "deployments" | "pricing" | "campaigns";
   children: React.ReactNode;
 }) {
   return (
@@ -52,6 +52,20 @@ export function AdminShell({
             aria-current={active === "deployments" ? "page" : undefined}
           >
             Deployments
+          </Link>
+          <Link
+            href="/admin/pricing"
+            className={styles.navLink}
+            aria-current={active === "pricing" ? "page" : undefined}
+          >
+            Pricing
+          </Link>
+          <Link
+            href="/admin/campaigns"
+            className={styles.navLink}
+            aria-current={active === "campaigns" ? "page" : undefined}
+          >
+            Campaigns
           </Link>
         </div>
       </nav>

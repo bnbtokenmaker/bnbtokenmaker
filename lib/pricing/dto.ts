@@ -20,6 +20,15 @@ export type CampaignDto = {
   discountWei: string;
   start?: string;
   end?: string;
+  /**
+   * Phase 7C public campaign metadata (present only when a real DB-backed
+   * campaign reduced the quote). Sanitized for public display: no admin ids,
+   * no internal notes.
+   */
+  id?: number;
+  name?: string;
+  code?: string | null;
+  discountBasisPoints?: number;
 };
 
 export type PlatformFeeResultDto = {

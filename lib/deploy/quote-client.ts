@@ -16,6 +16,14 @@ export type QuoteLineItem = {
   priceWei: string;
 };
 
+export type AuthoritativeQuoteCampaign = {
+  name: string;
+  code: string | null;
+  discountBasisPoints: number;
+  /** ISO end time of the campaign window (real, server-provided). */
+  endsAt: string | null;
+};
+
 export type AuthoritativeQuote = {
   pricingVersion: string;
   currency: "BNB";
@@ -27,6 +35,8 @@ export type AuthoritativeQuote = {
   discountWei: string;
   totalWei: string;
   totalBnb: string;
+  /** Present only when a real campaign reduced the quote. */
+  campaign?: AuthoritativeQuoteCampaign | null;
 };
 
 const KNOWN_FEATURES: ReadonlySet<string> = new Set([
@@ -83,6 +93,10 @@ export function parseQuotePayload(input: unknown): AuthoritativeQuote | null {
   for (const feature of q.selectedFeatures) {
     if (typeof feature !== "string" || !KNOWN_FEATURES.has(feature)) return null;
   }
+  // Campaign summary is display-only and tolerant: a malformed campaign block
+  // is dropped (showing the full undiscounted price) rather than failing the
+  // whole quote or inventing a discount.
+  const campaign = parseQuoteCampaign(q.campaign);
   return {
     pricingVersion: q.pricingVersion,
     currency: "BNB",
@@ -94,6 +108,42 @@ export function parseQuotePayload(input: unknown): AuthoritativeQuote | null {
     discountWei: q.discountWei,
     totalWei: q.totalWei,
     totalBnb: q.totalBnb,
+    campaign,
+  };
+}
+
+function parseQuoteCampaign(input: unknown): AuthoritativeQuoteCampaign | null {
+  if (input === null || input === undefined) return null;
+  if (typeof input !== "object") return null;
+  const record = input as Record<string, unknown>;
+  if (typeof record.name !== "string" || record.name.length === 0) return null;
+  if (
+    typeof record.discountBasisPoints !== "number" ||
+    !Number.isInteger(record.discountBasisPoints) ||
+    record.discountBasisPoints < 1 ||
+    record.discountBasisPoints > 9000
+  ) {
+    return null;
+  }
+  if (
+    record.code !== null &&
+    record.code !== undefined &&
+    typeof record.code !== "string"
+  ) {
+    return null;
+  }
+  let endsAt: string | null = null;
+  if (typeof record.end === "string") {
+    endsAt = Number.isNaN(Date.parse(record.end)) ? null : record.end;
+  }
+  return {
+    name: record.name,
+    code:
+      typeof record.code === "string" && record.code.length > 0
+        ? record.code
+        : null,
+    discountBasisPoints: record.discountBasisPoints,
+    endsAt,
   };
 }
 

@@ -157,10 +157,30 @@ describe("admin routes — login/logout/me behavior", () => {
       .filter((e) => e.isDirectory())
       .map((e) => e.name)
       .sort();
-    assert.deepEqual(routes, ["login", "logout", "me"]);
+    // Phase 7C adds authenticated pricing/campaign management. Every route
+    // under these directories requires a valid admin session (proven by
+    // lib/admin/tests/pricing-campaigns-routes.test.ts); this allowlist
+    // exists to catch stray new endpoints, not to freeze the set.
+    assert.deepEqual(routes, [
+      "campaigns",
+      "login",
+      "logout",
+      "me",
+      "pricing",
+    ]);
     for (const route of routes) {
       const files = await readdir(join(adminApi.pathname, route));
-      assert.deepEqual(files, ["route.ts"]);
+      if (route === "pricing") {
+        assert.deepEqual(files.sort(), ["publish", "route.ts"]);
+        const nested = await readdir(join(adminApi.pathname, route, "publish"));
+        assert.deepEqual(nested, ["route.ts"]);
+      } else if (route === "campaigns") {
+        assert.deepEqual(files.sort(), ["[id]", "route.ts"]);
+        const nested = await readdir(join(adminApi.pathname, route, "[id]"));
+        assert.deepEqual(nested, ["route.ts"]);
+      } else {
+        assert.deepEqual(files, ["route.ts"]);
+      }
     }
   });
 });

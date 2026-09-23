@@ -47,7 +47,7 @@ import {
   ProviderChainReadError,
   WalletProviderUnavailableError,
 } from "../lib/wallet/switch";
-import { formatWeiBnbCompact } from "../lib/pricing";
+import { formatWeiBnbCompact, formatWeiBnbDisplay } from "../lib/pricing";
 import { clearDeployDraft } from "../lib/deploy/draft-transfer";
 import { selectedFeatureIds, type FeatureSelection } from "../lib/pricing/presets";
 import {
@@ -1032,6 +1032,14 @@ export function DeployFlow({
                     : "Unavailable — try again"}
               </dd>
             </div>
+            {visibleQuote?.campaign && visibleQuote.discountWei !== "0" ? (
+              <div>
+                <dt>Campaign discount ({visibleQuote.campaign.name})</dt>
+                <dd>
+                  −{formatWeiBnbDisplay(BigInt(visibleQuote.discountWei))} BNB
+                </dd>
+              </div>
+            ) : null}
           </dl>
           {devQuoteCode ? (
             <p className="deploy-devnote" data-dev-note="deploy-query">
@@ -1200,6 +1208,14 @@ export function DeployFlow({
                     )}
                   </dd>
                 </div>
+                {visibleQuote?.campaign && visibleQuote.discountWei !== "0" ? (
+                  <div>
+                    <dt>Campaign discount ({visibleQuote.campaign.name})</dt>
+                    <dd>
+                      −{formatWeiBnbDisplay(BigInt(visibleQuote.discountWei))} BNB
+                    </dd>
+                  </div>
+                ) : null}
                 <div>
                   <dt>Testnet platform fee</dt>
                   <dd>0 BNB</dd>

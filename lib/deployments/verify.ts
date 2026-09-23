@@ -121,7 +121,9 @@ export async function verifyDeployment(input: {
   hint: RecordHint;
   chain: ChainReader;
   expectedFactory: `0x${string}` | null;
-  quoteForFeatures: (featureIds: string[]) => QuoteSnapshotInput;
+  quoteForFeatures: (
+    featureIds: string[]
+  ) => QuoteSnapshotInput | Promise<QuoteSnapshotInput>;
 }): Promise<VerifiedDeploymentRecord> {
   const { hint, chain, expectedFactory, quoteForFeatures } = input;
   if (!expectedFactory || !/^0x[a-fA-F0-9]{40}$/.test(expectedFactory)) {
@@ -215,7 +217,7 @@ export async function verifyDeployment(input: {
 
   let quote: QuoteSnapshotInput;
   try {
-    quote = quoteForFeatures(selectedFeatures);
+    quote = await quoteForFeatures(selectedFeatures);
   } catch {
     throw new VerificationError("rpc-unavailable", "quote snapshot failed");
   }

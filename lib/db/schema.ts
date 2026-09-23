@@ -111,3 +111,84 @@ export const adminSessions = pgTable("admin_sessions", {
 });
 
 export type AdminSessionRow = typeof adminSessions.$inferSelect;
+
+/**
+ * Phase 7C pricing versions (mirrors db/migrations/0003).
+ *
+ * Published versions are IMMUTABLE rows: an admin price update inserts a NEW
+ * row and atomically flips the single active pointer (partial unique index
+ * `pricing_versions_single_active`). Historical rows are never rewritten, so
+ * deployment quote snapshots stay stable. SQL is authoritative for DDL; the
+ * version identifier is assigned database-side ('v' || nextval).
+ */
+export const pricingVersions = pgTable("pricing_versions", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  version: text("version").notNull().unique(),
+  status: text("status").notNull().default("inactive"),
+  currency: text("currency").notNull().default("BNB"),
+  /** Canonical wei integer strings (digits only, "0" for zero). */
+  baseFeeWei: text("base_fee_wei").notNull(),
+  burnFeeWei: text("burn_fee_wei").notNull(),
+  mintFeeWei: text("mint_fee_wei").notNull(),
+  pauseFeeWei: text("pause_fee_wei").notNull(),
+  maxTxFeeWei: text("maxtx_fee_wei").notNull(),
+  maxWalletFeeWei: text("maxwallet_fee_wei").notNull(),
+  blacklistFeeWei: text("blacklist_fee_wei").notNull(),
+  whitelistFeeWei: text("whitelist_fee_wei").notNull(),
+  createdByAdminId: bigint("created_by_admin_id", { mode: "number" }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+});
+
+export type PricingVersionRow = typeof pricingVersions.$inferSelect;
+
+/**
+ * Phase 7C honest discount campaigns (mirrors db/migrations/0003).
+ *
+ * Whole-quote percentage discounts only. Status is DERIVED from
+ * enabled + starts_at/ends_at + server time — never a stored label.
+ */
+export const campaigns = pgTable("campaigns", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  name: text("name").notNull(),
+  /** Optional promo code, stored uppercased/trimmed; NULL = automatic. */
+  code: text("code"),
+  discountType: text("discount_type").notNull().default("percent"),
+  /** Integer basis points: 1000 = 10.00%. */
+  discountBasisPoints: integer("discount_basis_points").notNull(),
+  appliesTo: text("applies_to").notNull().default("whole_quote"),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  createdByAdminId: bigint("created_by_admin_id", { mode: "number" }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type CampaignRow = typeof campaigns.$inferSelect;
+
+/**
+ * Phase 7C admin audit trail (mirrors db/migrations/0003).
+ *
+ * One row per financial-configuration mutation, written atomically with the
+ * mutation itself. Metadata carries safe before/after summaries only.
+ */
+export const adminAuditEvents = pgTable("admin_audit_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  adminUserId: bigint("admin_user_id", { mode: "number" }),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  metadata: jsonb("metadata").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type AdminAuditEventRow = typeof adminAuditEvents.$inferSelect;

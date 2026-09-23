@@ -6,21 +6,32 @@ import { PRESETS, PRESET_IDS, selectedFeatureIds } from "../presets";
 import type { PresetId } from "../presets";
 import type { CampaignState, FeatureLineItem, PricingResult } from "../types";
 import type { QuoteLineItemDto, QuoteResponse, PricingSource } from "./types";
+import {
+  normalizeCampaignCode,
+  quoteWithPercentCampaign,
+} from "./campaign-policy";
+import type { AuthoritativeSnapshot } from "./store";
 
 const MAX_FEATURES = PAID_FEATURES.length;
 const MAX_FEATURE_ID_LENGTH = 64;
 
 export type QuoteSelection =
-  | { ok: true; selection: ReadonlyArray<string>; preset: PresetId | null }
+  | {
+      ok: true;
+      selection: ReadonlyArray<string>;
+      preset: PresetId | null;
+      campaignCode: string | null;
+    }
   | { ok: false; code: string; message: string };
 
 /**
  * Strictly validates and normalizes a raw quote request body.
  *
- * The API accepts ONLY the selection intent: an optional `preset` and an
- * optional explicit list of `features` (canonical feature ids). Everything else
- * is rejected — including any client-supplied wei values, negative prices,
- * feature objects, partial configs, or money-shaped fields.
+ * The API accepts ONLY the selection intent: an optional `preset`, an
+ * optional explicit list of `features` (canonical feature ids), and an
+ * optional `campaignCode`. Everything else is rejected — including any
+ * client-supplied wei values, negative prices, feature objects, partial
+ * configs, discount amounts, final prices, or money-shaped fields.
  */
 export function parseQuoteRequest(input: unknown): QuoteSelection {
   if (input === null || typeof input !== "object" || Array.isArray(input)) {
@@ -29,11 +40,11 @@ export function parseQuoteRequest(input: unknown): QuoteSelection {
   const record = input as Record<string, unknown>;
   const keys = Object.keys(record);
   for (const key of keys) {
-    if (key !== "preset" && key !== "features") {
+    if (key !== "preset" && key !== "features" && key !== "campaignCode") {
       return {
         ok: false,
         code: "unknown-field",
-        message: `unexpected field "${key}" is not accepted — only "preset" and "features" are allowed`,
+        message: `unexpected field "${key}" is not accepted — only "preset", "features" and "campaignCode" are allowed`,
       };
     }
   }
@@ -106,7 +117,22 @@ export function parseQuoteRequest(input: unknown): QuoteSelection {
     ? features
     : (selectedFeatureIds(PRESETS[preset as PresetId]) as ReadonlyArray<string>);
 
-  return { ok: true, selection, preset };
+  // Optional promo code: normalized server-side (trim + uppercase). Absent
+  // means automatic campaigns only; malformed means rejected, never guessed.
+  let campaignCode: string | null = null;
+  if (keys.includes("campaignCode")) {
+    try {
+      campaignCode = normalizeCampaignCode(record.campaignCode);
+    } catch {
+      return {
+        ok: false,
+        code: "invalid-campaign-code",
+        message: "campaign code is malformed",
+      };
+    }
+  }
+
+  return { ok: true, selection, preset, campaignCode };
 }
 
 /**
@@ -168,12 +194,44 @@ export function isKnownPricingVersion(source: PricingSource, version: string): b
   return typeof version === "string" && source.getPricingConfigByVersion(version) !== null;
 }
 
+/**
+ * Phase 7C snapshot quote: prices a selection against an authoritative
+ * DB-backed snapshot (active pricing version + pre-resolved campaign).
+ *
+ * The campaign is applied as an exact integer-basis-points discount through
+ * the shared `quoteWithPercentCampaign` path — no duplicated math. With no
+ * campaign, this is identical to the legacy static-source quote.
+ */
+export function quoteFromSnapshot(
+  snapshot: AuthoritativeSnapshot,
+  selection: ReadonlyArray<string>
+): PricingResult {
+  if (!snapshot.campaign) {
+    return calculatePlatformFee(snapshot.config, selection);
+  }
+  return quoteWithPercentCampaign(snapshot.config, selection, {
+    basisPoints: snapshot.campaign.basisPoints,
+    start: snapshot.campaign.startsAt.toISOString(),
+    end: snapshot.campaign.endsAt.toISOString(),
+  });
+}
+
+export type QuoteCampaignMeta = {
+  id: number;
+  name: string;
+  code: string | null;
+  discountBasisPoints: number;
+};
+
 const toLineItemDto = (item: FeatureLineItem): QuoteLineItemDto => ({
   feature: item.feature,
   priceWei: weiToString(item.priceWei),
 });
 
-const toCampaignDto = (result: PricingResult): CampaignDto | null => {
+const toCampaignDto = (
+  result: PricingResult,
+  meta?: QuoteCampaignMeta
+): CampaignDto | null => {
   const campaign = result.campaign;
   if (campaign === null) {
     return null;
@@ -184,10 +242,22 @@ const toCampaignDto = (result: PricingResult): CampaignDto | null => {
     discountWei: weiToString(campaign.discountWei),
     ...(campaign.start !== undefined ? { start: campaign.start } : {}),
     ...(campaign.end !== undefined ? { end: campaign.end } : {}),
+    // Public metadata only when a real campaign reduced the quote.
+    ...(meta !== undefined
+      ? {
+          id: meta.id,
+          name: meta.name,
+          code: meta.code,
+          discountBasisPoints: meta.discountBasisPoints,
+        }
+      : {}),
   };
 };
 
-export function toQuoteDto(result: PricingResult): QuoteResponse {
+export function toQuoteDto(
+  result: PricingResult,
+  campaignMeta?: QuoteCampaignMeta
+): QuoteResponse {
   return {
     pricingVersion: result.pricingVersion,
     currency: "BNB",
@@ -199,6 +269,6 @@ export function toQuoteDto(result: PricingResult): QuoteResponse {
     discountWei: weiToString(result.discountWei),
     totalWei: weiToString(result.totalPlatformFeeWei),
     totalBnb: formatWeiBnbDisplay(result.totalPlatformFeeWei),
-    campaign: toCampaignDto(result),
+    campaign: toCampaignDto(result, campaignMeta),
   };
 }

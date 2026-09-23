@@ -61,7 +61,9 @@ export type RecordDependencies = {
    * Injected (not imported) so this module stays free of `server-only`
    * wiring and unit-testable — see ./server-quote.ts.
    */
-  quoteForFeatures: (featureIds: string[]) => QuoteSnapshotInput;
+  quoteForFeatures: (
+    featureIds: string[]
+  ) => QuoteSnapshotInput | Promise<QuoteSnapshotInput>;
 };
 
 function verificationToPublicCode(code: string): RecordDeploymentsErrorCode {

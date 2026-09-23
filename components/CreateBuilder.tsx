@@ -104,7 +104,29 @@ type CreateBuilderProps = {
   pricingConfigDto: PricingConfigDto;
   serverQuote: QuoteResponse;
   initialDraft?: DraftConfig;
+  /**
+   * Sanitized public campaign summary for the live ESTIMATE breakdown.
+   * Display-only: bigint math runs locally on server-provided parameters,
+   * and the deploy flow re-quotes authoritatively server-side before any
+   * transaction. Null when no campaign is currently active.
+   */
+  activeCampaign?: ActiveCampaignEstimate | null;
 };
+
+export type ActiveCampaignEstimate = {
+  name: string;
+  code: string | null;
+  discountBasisPoints: number;
+  /** Real campaign end, ISO string (server-provided). */
+  endsAt: string;
+};
+
+/** Exact "10.00" percent label from integer basis points (no floats). */
+function basisPointsLabel(basisPoints: number): string {
+  const whole = Math.floor(basisPoints / 100);
+  const frac = String(basisPoints % 100).padStart(2, "0");
+  return `${whole}.${frac}`;
+}
 
 export type SummaryActionsProps = {
   walletConnected: boolean;
@@ -238,6 +260,7 @@ export function CreateBuilder({
   pricingConfigDto,
   serverQuote,
   initialDraft = DRAFT_DEFAULTS,
+  activeCampaign = null,
 }: CreateBuilderProps) {
   // Restore the tab-scoped draft carried back from /deploy ("Edit token").
   // Absent on fresh tabs; cleared by "Create another token" for a clean start.
@@ -314,6 +337,27 @@ export function CreateBuilder({
   }, [configState, feats]);
 
   const result = pricingState.ok ? pricingState.result : null;
+
+  // Honest campaign estimate: exact bigint discount from the server-provided
+  // campaign parameters (round down, never exceeding the subtotal). Shown
+  // only when a REAL campaign is active; otherwise no discount UI at all.
+  const campaignEstimate = useMemo(() => {
+    if (!result || !activeCampaign) return null;
+    if (
+      !Number.isInteger(activeCampaign.discountBasisPoints) ||
+      activeCampaign.discountBasisPoints < 1 ||
+      activeCampaign.discountBasisPoints > 9000
+    ) {
+      return null;
+    }
+    const discountWei =
+      (result.subtotalWei * BigInt(activeCampaign.discountBasisPoints)) / 10000n;
+    if (discountWei <= 0n) return null;
+    return {
+      discountWei,
+      totalWei: result.subtotalWei - discountWei,
+    };
+  }, [result, activeCampaign]);
 
   useEffect(() => {
     if (!pricingState.ok) {
@@ -840,10 +884,19 @@ export function CreateBuilder({
                   <span>+{formatWeiBnbDisplay(item.priceWei)} BNB</span>
                 </div>
               ))}
+              {campaignEstimate !== null && activeCampaign !== null ? (
+                <>
+                  <div className="price-row"><span>Subtotal</span><span><s>{formatWeiBnbDisplay(result.subtotalWei)} BNB</s></span></div>
+                  <div className="price-row"><span>Campaign “{activeCampaign.name}” (−{basisPointsLabel(activeCampaign.discountBasisPoints)}%)</span><span>−{formatWeiBnbDisplay(campaignEstimate.discountWei)} BNB</span></div>
+                </>
+              ) : null}
               <div className="price-total">
                 <span className="lbl">Standard price</span>
-                <span className="val" id="pTotal" data-pricing-version={serverQuote.pricingVersion} data-quote-state="estimate">{formatWeiBnbDisplay(result.totalPlatformFeeWei)} BNB</span>
+                <span className="val" id="pTotal" data-pricing-version={serverQuote.pricingVersion} data-quote-state="estimate">{formatWeiBnbDisplay(campaignEstimate !== null ? campaignEstimate.totalWei : result.totalPlatformFeeWei)} BNB</span>
               </div>
+              {campaignEstimate !== null && activeCampaign !== null ? (
+                <p className="gas-note">Campaign discount ends {new Date(activeCampaign.endsAt).toUTCString()}. The final price is re-quoted from the server before deployment.</p>
+              ) : null}
               <div className="price-row"><span>Testnet platform fee</span><span>0 BNB</span></div>
               <p className="gas-note" id="feeNote">Reference product price — testnet deployments are fee-free (0 BNB platform fee + network gas).</p>
             </div>

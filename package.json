@@ -14,6 +14,7 @@
     "test:pricing": "tsx --test lib/pricing/tests/*.test.ts",
     "test": "tsx --test lib/pricing/tests/*.test.ts lib/draft/tests/*.test.ts lib/wallet/tests/*.test.ts lib/token/tests/*.test.ts lib/deploy/tests/*.test.ts lib/site/tests/*.test.ts lib/db/tests/*.test.ts lib/deployments/tests/*.test.ts lib/admin/tests/*.test.ts lib/admin/dashboard/tests/*.test.ts lib/server/tests/*.test.ts",
     "db:migrate": "tsx scripts/db-migrate.ts",
+    "pricing:bootstrap": "tsx scripts/pricing-bootstrap.ts",
     "admin:create": "tsx scripts/create-admin.ts",
     "contracts:compile": "hardhat compile",
     "contracts:test": "hardhat test",
