@@ -26,6 +26,9 @@ const SEED_FEES = {
   maxWallet: "0.010",
   blacklist: "0.010",
   whitelist: "0.010",
+  trading: "0.020",
+  antiBot: "0.010",
+  autoLiquidity: "0.015",
 } as const;
 
 function seedFees() {

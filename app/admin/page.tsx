@@ -41,6 +41,9 @@ const FEATURE_LABELS: Record<string, string> = {
   maxWallet: "Max wallet",
   blacklist: "Blacklist",
   whitelist: "Whitelist",
+  trading: "Trading fees",
+  antiBot: "Anti-bot",
+  autoLiquidity: "Auto-liquidity",
 };
 
 export default async function AdminOverviewPage() {
@@ -116,8 +119,18 @@ export default async function AdminOverviewPage() {
             {totalFee} <small>BNB</small>
           </div>
           <div className={styles.statNote}>
-            Testnet deployments carry no fee — not revenue.
+            Exact recorded sum — legacy zero-fee rows add 0, never revenue.
           </div>
+        </div>
+        <div className={styles.card} role="listitem">
+          <div className={styles.statLabel}>Paid deployments</div>
+          <div className={styles.statValue}>{stats.paidDeployments}</div>
+          <div className={styles.statNote}>Nonzero recorded fee</div>
+        </div>
+        <div className={styles.card} role="listitem">
+          <div className={styles.statLabel}>V1 capability deployments</div>
+          <div className={styles.statValue}>{stats.v1Deployments}</div>
+          <div className={styles.statNote}>Trading, anti-bot or auto-liquidity</div>
         </div>
         <div className={styles.card} role="listitem">
           <div className={styles.statLabel}>Latest deployment</div>

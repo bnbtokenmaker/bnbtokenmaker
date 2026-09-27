@@ -30,6 +30,8 @@ describe("deploy errors — sanitized user messages", () => {
       "invalid-config",
       "duplicate-attempt",
       "factory-unavailable",
+      "authorization-failed",
+      "fee-mismatch",
       "mainnet-disabled",
     ] as const;
     for (const code of codes) {

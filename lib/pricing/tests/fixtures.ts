@@ -25,6 +25,9 @@ export const TEST_PRICING_CONFIG: PricingConfig = {
     maxWallet: parseBnbToWei("0.010"),
     blacklist: parseBnbToWei("0.010"),
     whitelist: parseBnbToWei("0.010"),
+    trading: parseBnbToWei("0.020"),
+    antiBot: parseBnbToWei("0.010"),
+    autoLiquidity: parseBnbToWei("0.015"),
   },
 };
 

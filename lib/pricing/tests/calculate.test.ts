@@ -114,9 +114,41 @@ describe("validateSelection", () => {
     );
   });
 
-  it("rejects coming soon features", () => {
-    expectValidationError(() => validateSelection(TEST_CONFIG, ["buySellTax"]), "coming-soon-feature-selected");
-    expectValidationError(() => validateSelection(TEST_CONFIG, ["marketingWallet"]), "coming-soon-feature-selected");
+  it("retired coming-soon ids are unknown (folded into trading)", () => {
+    expectValidationError(() => validateSelection(TEST_CONFIG, ["buySellTax"]), "unknown-feature");
+    expectValidationError(() => validateSelection(TEST_CONFIG, ["marketingWallet"]), "unknown-feature");
+    expectValidationError(() => validateSelection(TEST_CONFIG, ["feeExemption"]), "unknown-feature");
+  });
+
+  it("unoffered V1 capabilities fail closed with feature-not-offered", () => {
+    // TEST_CONFIG is a legacy 7-fee config: trading/antiBot/autoLiquidity
+    // are valid ids but not offered in this version.
+    for (const id of ["trading", "antiBot", "autoLiquidity"]) {
+      expectValidationError(() => validateSelection(TEST_CONFIG, [id]), "feature-not-offered");
+    }
+  });
+
+  it("offered V1 capabilities price from a complete config", () => {
+    const full = {
+      ...TEST_CONFIG,
+      featureFees: {
+        ...TEST_CONFIG.featureFees,
+        trading: parseBnbToWei("0.020"),
+        antiBot: parseBnbToWei("0.010"),
+        autoLiquidity: parseBnbToWei("0.015"),
+      },
+    };
+    assert.deepEqual(validateConfig(full), { ok: true });
+    assert.deepEqual(validateSelection(full, ["trading", "antiBot"]), { ok: true });
+    const result = calculatePlatformFee(full, ["trading", "autoLiquidity"]);
+    assert.equal(
+      result.totalPlatformFeeWei,
+      parseBnbToWei("0.050") + parseBnbToWei("0.020") + parseBnbToWei("0.015")
+    );
+    assert.deepEqual(
+      result.lineItems.map((item) => item.feature),
+      ["trading", "autoLiquidity"]
+    );
   });
 
   it("accepts a valid selection", () => {

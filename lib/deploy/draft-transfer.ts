@@ -17,13 +17,12 @@
  * transaction.
  */
 
-import type { PaidFeatureId } from "../pricing/types";
-import { validateTokenConfig } from "../token/config";
+import { EMPTY_FEATURES, validateTokenConfig } from "../token/config";
 
 export const DEPLOY_DRAFT_VERSION = 1 as const;
 export const DEPLOY_DRAFT_KEY = "btm-deploy-draft-v1";
 
-const KNOWN_FEATURES: ReadonlySet<string> = new Set([
+const DRAFT_FEATURE_IDS = [
   "burn",
   "mint",
   "pause",
@@ -31,9 +30,15 @@ const KNOWN_FEATURES: ReadonlySet<string> = new Set([
   "maxWallet",
   "blacklist",
   "whitelist",
-]);
+] as const;
 
-export type DeployDraftFeatures = Record<PaidFeatureId, boolean>;
+/** Pre-V1 draft feature ids (frozen transport shape, version 1). */
+export type DeployDraftFeatureId = (typeof DRAFT_FEATURE_IDS)[number];
+
+const KNOWN_FEATURES: ReadonlySet<string> = new Set(DRAFT_FEATURE_IDS);
+
+/** Pre-V1 draft feature map. V1 capabilities join the draft shape in 7D-E2. */
+export type DeployDraftFeatures = Record<DeployDraftFeatureId, boolean>;
 
 export type DeployDraftV1 = {
   version: typeof DEPLOY_DRAFT_VERSION;
@@ -47,6 +52,20 @@ export type DeployDraftV1 = {
   maxTxPercent: string;
   maxWalletPercent: string;
   savedAt: number;
+  // --- V1 additions (all optional: pre-V1 drafts parse without them) ---
+  /** Only meaningful when the mint flag is on; defaults to "capped". */
+  mintMode?: "capped" | "unlimited";
+  /** Human token units for a capped lifetime supply. */
+  maxSupplyHuman?: string;
+  /** Priced V1 capabilities (mirrors the builder toggles). */
+  trading?: boolean;
+  /** Basis-point integers as strings (trading section). */
+  buyTaxBps?: string;
+  sellTaxBps?: string;
+  marketingWallet?: string;
+  antiBot?: boolean;
+  snipeBlocks?: string;
+  autoLiquidity?: boolean;
 };
 
 function storage(): Storage | null {
@@ -85,6 +104,40 @@ export function parseDeployDraft(input: unknown): DeployDraftV1 | null {
   for (const key of keys) {
     if (!KNOWN_FEATURES.has(key) || typeof feats[key] !== "boolean") return null;
   }
+  // V1 extras are optional; when present they must have the right shape.
+  const v1: Pick<
+    DeployDraftV1,
+    | "mintMode" | "maxSupplyHuman" | "trading" | "buyTaxBps" | "sellTaxBps"
+    | "marketingWallet" | "antiBot" | "snipeBlocks" | "autoLiquidity"
+  > = {};
+  const optString = (key: string): string | undefined | "invalid" => {
+    const v = input[key];
+    if (v === undefined) return undefined;
+    if (typeof v !== "string") return "invalid";
+    return v;
+  };
+  const mintMode = input.mintMode;
+  if (mintMode !== undefined) {
+    if (mintMode !== "capped" && mintMode !== "unlimited") return null;
+    v1.mintMode = mintMode;
+  }
+  for (const key of ["maxSupplyHuman", "buyTaxBps", "sellTaxBps", "marketingWallet", "snipeBlocks"] as const) {
+    const v = optString(key);
+    if (v === "invalid") return null;
+    if (v !== undefined) v1[key] = v;
+  }
+  if (input.antiBot !== undefined) {
+    if (typeof input.antiBot !== "boolean") return null;
+    v1.antiBot = input.antiBot;
+  }
+  if (input.trading !== undefined) {
+    if (typeof input.trading !== "boolean") return null;
+    v1.trading = input.trading;
+  }
+  if (input.autoLiquidity !== undefined) {
+    if (typeof input.autoLiquidity !== "boolean") return null;
+    v1.autoLiquidity = input.autoLiquidity;
+  }
   return {
     version: DEPLOY_DRAFT_VERSION,
     name,
@@ -95,6 +148,7 @@ export function parseDeployDraft(input: unknown): DeployDraftV1 | null {
     maxTxPercent,
     maxWalletPercent,
     savedAt,
+    ...v1,
   };
 }
 
@@ -170,7 +224,9 @@ export function draftDomainValid(draft: DeployDraftV1): boolean {
       decimals: draft.decimals,
       supplyHuman: draft.supply,
       owner: DRAFT_CHECK_OWNER,
-      features: { ...draft.feats },
+      // Pre-V1 drafts carry the 7 paid-feature flags; V1 capabilities
+      // default off at this bridge (7D-E adds them to the draft shape).
+      features: { ...EMPTY_FEATURES, ...draft.feats },
       maxTxPercent: draft.feats.maxTx ? draft.maxTxPercent : undefined,
       maxWalletPercent: draft.feats.maxWallet ? draft.maxWalletPercent : undefined,
     });

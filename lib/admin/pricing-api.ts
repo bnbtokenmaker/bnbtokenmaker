@@ -93,6 +93,10 @@ export type PricingVersionDto = {
     maxWallet: string;
     blacklist: string;
     whitelist: string;
+    /** null = capability not offered in this version. */
+    trading: string | null;
+    antiBot: string | null;
+    autoLiquidity: string | null;
   };
   createdAt: string;
   activatedAt: string | null;
@@ -113,6 +117,9 @@ export function toPricingVersionDto(row: PricingVersionRow): PricingVersionDto {
       maxWallet: row.maxWalletFeeWei,
       blacklist: row.blacklistFeeWei,
       whitelist: row.whitelistFeeWei,
+      trading: row.tradingFeeWei,
+      antiBot: row.antibotFeeWei,
+      autoLiquidity: row.autoliquidityFeeWei,
     },
     createdAt: row.createdAt.toISOString(),
     activatedAt: row.activatedAt ? row.activatedAt.toISOString() : null,

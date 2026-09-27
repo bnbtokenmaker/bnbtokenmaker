@@ -73,7 +73,7 @@ async function main(): Promise<void> {
     const seed = devPricingConfig();
     const wei = (value: bigint): string => value.toString();
     const fees = seed.featureFees;
-    for (const key of ["burn", "mint", "pause", "maxTx", "maxWallet", "blacklist", "whitelist"] as const) {
+    for (const key of ["burn", "mint", "pause", "maxTx", "maxWallet", "blacklist", "whitelist", "trading", "antiBot", "autoLiquidity"] as const) {
       if (typeof fees[key] !== "bigint" || (fees[key] as bigint) < 0n) {
         console.error(
           "pricing:bootstrap: seed configuration is malformed — refusing to run."
@@ -100,9 +100,10 @@ async function main(): Promise<void> {
         `INSERT INTO pricing_versions (
            base_fee_wei, burn_fee_wei, mint_fee_wei, pause_fee_wei,
            maxtx_fee_wei, maxwallet_fee_wei, blacklist_fee_wei,
-           whitelist_fee_wei, status, activated_at
+           whitelist_fee_wei, trading_fee_wei, antibot_fee_wei,
+           autoliquidity_fee_wei, status, activated_at
          )
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active',now())
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'active',now())
          RETURNING id, version`,
         [
           wei(seed.baseFeeWei),
@@ -113,6 +114,9 @@ async function main(): Promise<void> {
           wei(fees.maxWallet as bigint),
           wei(fees.blacklist as bigint),
           wei(fees.whitelist as bigint),
+          wei(fees.trading as bigint),
+          wei(fees.antiBot as bigint),
+          wei(fees.autoLiquidity as bigint),
         ]
       );
       await pool.query(

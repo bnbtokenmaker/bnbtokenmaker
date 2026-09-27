@@ -30,6 +30,9 @@ export const DEV_PRICING_FEES_BNB = {
   maxWallet: "0.010",
   blacklist: "0.010",
   whitelist: "0.010",
+  trading: "0.020",
+  antiBot: "0.010",
+  autoLiquidity: "0.015",
 } as const;
 
 export function devPricingConfig(): PricingConfig {
@@ -44,6 +47,9 @@ export function devPricingConfig(): PricingConfig {
       maxWallet: parseBnbToWei(DEV_PRICING_FEES_BNB.maxWallet),
       blacklist: parseBnbToWei(DEV_PRICING_FEES_BNB.blacklist),
       whitelist: parseBnbToWei(DEV_PRICING_FEES_BNB.whitelist),
+      trading: parseBnbToWei(DEV_PRICING_FEES_BNB.trading),
+      antiBot: parseBnbToWei(DEV_PRICING_FEES_BNB.antiBot),
+      autoLiquidity: parseBnbToWei(DEV_PRICING_FEES_BNB.autoLiquidity),
     },
   };
 }

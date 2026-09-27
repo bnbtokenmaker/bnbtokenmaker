@@ -33,6 +33,12 @@ export type TokenFeatureFlags = {
   maxWallet: boolean;
   blacklist: boolean;
   whitelist: boolean;
+  /** V1: bit 7 — buy/sell tax capability (marketing wallet + fee exemption). */
+  trading: boolean;
+  /** V1: bit 8 — deterministic bounded anti-bot launch. */
+  antiBot: boolean;
+  /** V1: bit 9 — PancakeSwap V2 auto-liquidity (burn-only LP). */
+  autoLiquidity: boolean;
 };
 
 export const EMPTY_FEATURES: TokenFeatureFlags = {
@@ -43,6 +49,9 @@ export const EMPTY_FEATURES: TokenFeatureFlags = {
   maxWallet: false,
   blacklist: false,
   whitelist: false,
+  trading: false,
+  antiBot: false,
+  autoLiquidity: false,
 };
 
 export function flagsFromSelection(
@@ -303,6 +312,10 @@ export function toFactoryArgs(validated: ValidatedTokenConfig): FactoryCreateArg
 }
 
 // Feature-bit positions, mirroring TokenFactory FLAG_* constants.
+// Canonical V1 source of truth: bits 0-6 are Phase 6B-compatible; bits 7-9
+// are the V1 trading/launch/liquidity capabilities. Maximum Supply is
+// configuration associated with minting (not a separate bit); marketing
+// wallet + fee exemption are part of the trading capability (bit 7).
 export const FEATURE_BITS = {
   burn: 0,
   mint: 1,
@@ -311,6 +324,9 @@ export const FEATURE_BITS = {
   maxWallet: 4,
   blacklist: 5,
   whitelist: 6,
+  trading: 7,
+  antiBot: 8,
+  autoLiquidity: 9,
 } as const;
 
 export function decodeFeatureBitmap(bitmap: bigint): TokenFeatureFlags {
@@ -323,5 +339,8 @@ export function decodeFeatureBitmap(bitmap: bigint): TokenFeatureFlags {
     maxWallet: has(FEATURE_BITS.maxWallet),
     blacklist: has(FEATURE_BITS.blacklist),
     whitelist: has(FEATURE_BITS.whitelist),
+    trading: has(FEATURE_BITS.trading),
+    antiBot: has(FEATURE_BITS.antiBot),
+    autoLiquidity: has(FEATURE_BITS.autoLiquidity),
   };
 }

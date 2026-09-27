@@ -12,6 +12,7 @@ import {
   isDeployResultFresh,
   parseDeployResult,
   saveDeployResult,
+  storedResultMatchesDraft,
   verifyDeploymentReceipt,
   type DeployResultV1,
 } from "../result";
@@ -306,5 +307,55 @@ describe("deploy result — read-only refresh recovery", () => {
       assert.ok(!String(error.message).includes("0x93f03676"));
       assert.ok(!(error.hint ?? "").includes("0x93f03676"));
     }
+  });
+});
+
+describe("deploy result — refresh-recovery display binding (B5 stale panel)", () => {
+  it("shows the stored success only while the draft describes the same token", () => {
+    const stored = goodResult();
+    assert.equal(
+      storedResultMatchesDraft(stored, {
+        tokenName: "Community Test Token",
+        tokenSymbol: "COMTEST",
+      }),
+      true
+    );
+    // Draft-side whitespace/case normalization still matches.
+    assert.equal(
+      storedResultMatchesDraft(stored, {
+        tokenName: "  Community Test Token  ",
+        tokenSymbol: "comtest",
+      }),
+      true
+    );
+  });
+
+  it("suppresses a stale hint once the operator moves to a new draft", () => {
+    const stored = goodResult();
+    assert.equal(
+      storedResultMatchesDraft(stored, {
+        tokenName: "B5 Full V1 Probe",
+        tokenSymbol: "B5FULL",
+      }),
+      false
+    );
+    assert.equal(
+      storedResultMatchesDraft(stored, {
+        tokenName: "Community Test Token",
+        tokenSymbol: "OTHER",
+      }),
+      false
+    );
+    assert.equal(
+      storedResultMatchesDraft(stored, { tokenName: "", tokenSymbol: "" }),
+      false
+    );
+    assert.equal(
+      storedResultMatchesDraft(null, {
+        tokenName: "Community Test Token",
+        tokenSymbol: "COMTEST",
+      }),
+      false
+    );
   });
 });

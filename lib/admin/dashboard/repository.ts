@@ -45,8 +45,13 @@ export type DashboardStats = {
   last7Days: number;
   last30Days: number;
   uniqueDeployers: number;
-  /** Canonical wei TEXT (bigint-safe, summed database-side). */
+  /** Canonical wei TEXT (bigint-safe, summed database-side). Legacy
+   *  zero-fee rows contribute exactly 0 — the sum is commercial revenue. */
   totalPlatformFeeWei: string;
+  /** Deployments with a nonzero recorded platform fee (commercial). */
+  paidDeployments: number;
+  /** Deployments with any V1 capability flag (trading/antiBot/autoLiquidity). */
+  v1Deployments: number;
   /** Per-feature deployment counts (presence flags from the stored config). */
   featureUsage: Record<AdminFeatureFilter, number>;
   latestAt: Date | null;
@@ -117,6 +122,8 @@ export async function getDashboardStats(now: Date = new Date()): Promise<Dashboa
     deployerRows,
     feeRows,
     latestRows,
+    paidRows,
+    v1Rows,
     ...featureRows
   ] = await Promise.all([
     db.select({ n: count() }).from(deployments),
@@ -143,6 +150,25 @@ export async function getDashboardStats(now: Date = new Date()): Promise<Dashboa
       })
       .from(deployments),
     db.select({ latest: max(deployments.createdAt) }).from(deployments),
+    // Commercial deployments: nonzero recorded fee (canonical form, so a
+    // plain string comparison is exact; legacy zero-fee rows excluded).
+    db
+      .select({ n: count() })
+      .from(deployments)
+      .where(sql`${deployments.platformFeeWei} <> '0'`),
+    // V1 deployments: any of the three V1 capability flags present. Old
+    // rows lack the keys (->> yields NULL, never ='true'), so history is
+    // classified correctly without rewrites.
+    db
+      .select({ n: count() })
+      .from(deployments)
+      .where(
+        or(
+          featurePresence(deployments.featureConfig, "trading"),
+          featurePresence(deployments.featureConfig, "antiBot"),
+          featurePresence(deployments.featureConfig, "autoLiquidity")
+        )
+      ),
     ...ADMIN_FEATURE_FILTERS.map((key) =>
       db
         .select({ n: count() })
@@ -163,6 +189,8 @@ export async function getDashboardStats(now: Date = new Date()): Promise<Dashboa
     last30Days: monthRows[0]?.n ?? 0,
     uniqueDeployers: deployerRows[0]?.n ?? 0,
     totalPlatformFeeWei: parseFeeSum(feeRows[0]?.total ?? null),
+    paidDeployments: paidRows[0]?.n ?? 0,
+    v1Deployments: v1Rows[0]?.n ?? 0,
     featureUsage,
     latestAt: latestRows[0]?.latest ?? null,
   };

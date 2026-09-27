@@ -156,6 +156,10 @@ export type Phase6bPreTransaction = {
  * session exists, account matches, live chain is 97, args validated, fee zero.
  * Throws Phase6bDeploymentError fail-closed; only then may a transaction be
  * prepared.
+ *
+ * LEGACY (7D-E4): the V1 flow performs equivalent gates inline in
+ * DeployFlow (package-bound fee instead of zero fee). Retained with unit
+ * tests — `assertPhase6bChain` remains in active V1 use.
  */
 export function assertPhase6bPreTransaction(
   input: Phase6bPreTransactionInput

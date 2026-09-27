@@ -175,6 +175,11 @@ export type PricingFeeMap = {
   maxWallet: bigint;
   blacklist: bigint;
   whitelist: bigint;
+  /** V1 capabilities: bigint when offered, null when the version does not
+   *  offer them (NULLABLE columns; pre-migration rows read as null). */
+  trading: bigint | null;
+  antiBot: bigint | null;
+  autoLiquidity: bigint | null;
 };
 
 const PRICING_FEE_FIELDS = [
@@ -186,6 +191,9 @@ const PRICING_FEE_FIELDS = [
   "maxWallet",
   "blacklist",
   "whitelist",
+  "trading",
+  "antiBot",
+  "autoLiquidity",
 ] as const;
 
 export function pricingFeeMapToConfig(
@@ -194,19 +202,37 @@ export function pricingFeeMapToConfig(
 ): PricingConfig {
   const featureFees: Partial<Record<PaidFeatureId, bigint>> = {};
   for (const id of PAID_FEATURES) {
-    featureFees[id] = fees[id];
+    const value = fees[id];
+    if (value !== undefined && value !== null) {
+      featureFees[id] = value;
+    }
   }
   return { version, baseFeeWei: fees.base, featureFees };
 }
 
 export type ParsedPricingPublish = {
-  fees: PricingFeeMap;
+  fees: PublishedPricingFees;
 };
 
 /**
- * Validates an admin pricing publish body. Accepts ONLY the eight fee
+ * Fees for a PUBLISHED version: all eleven present (admin publish requires
+ * every field, so actively-quoted versions never carry not-offered gaps).
+ */
+export type PublishedPricingFees = Omit<
+  PricingFeeMap,
+  "trading" | "antiBot" | "autoLiquidity"
+> & {
+  trading: bigint;
+  antiBot: bigint;
+  autoLiquidity: bigint;
+};
+
+/**
+ * Validates an admin pricing publish body. Accepts ONLY the eleven fee
  * fields as human-readable BNB decimal strings; anything else (wei values,
- * version override, status flags, extra keys) is rejected.
+ * version override, status flags, extra keys) is rejected. All eleven are
+ * required: a published version always offers every V1 capability, so
+ * actively-quoted versions never carry not-offered gaps.
  */
 export function parsePricingPublishInput(input: unknown): ParsedPricingPublish {
   if (input === null || typeof input !== "object" || Array.isArray(input)) {
@@ -237,7 +263,10 @@ export function parsePricingPublishInput(input: unknown): ParsedPricingPublish {
     }
     fees[field] = wei;
   }
-  const subtotal = (Object.values(fees) as bigint[]).reduce(
+  // All eleven PRICING_FEE_FIELDS were assigned above (or the parse threw),
+  // so the map is a complete published fee set by construction.
+  const published = fees as PublishedPricingFees;
+  const subtotal = (Object.values(published) as bigint[]).reduce(
     (sum, value) => sum + value,
     0n
   );
@@ -246,7 +275,7 @@ export function parsePricingPublishInput(input: unknown): ParsedPricingPublish {
       `combined price exceeds the maximum of ${MAX_QUOTE_SUBTOTAL_BNB} BNB`
     );
   }
-  return { fees };
+  return { fees: published };
 }
 
 export type ParsedCampaignCreate = {

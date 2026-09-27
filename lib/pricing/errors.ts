@@ -3,6 +3,7 @@ export type PricingErrorCode =
   | "duplicate-feature"
   | "included-feature-selected"
   | "coming-soon-feature-selected"
+  | "feature-not-offered"
   | "incompatible-features"
   | "invalid-bnb-amount"
   | "negative-bnb-amount"

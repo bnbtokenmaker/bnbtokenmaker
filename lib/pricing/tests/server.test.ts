@@ -105,7 +105,7 @@ describe("quote service — MODULE under test: lib/pricing/server/quote.ts", () 
 
     it("rejects an oversized feature array (more than paid features exist)", () => {
       const parsed = parseQuoteRequest({
-        features: ["burn", "mint", "pause", "maxTx", "maxWallet", "blacklist", "whitelist", "burn"],
+        features: ["burn", "mint", "pause", "maxTx", "maxWallet", "blacklist", "whitelist", "trading", "antiBot", "autoLiquidity", "burn"],
       });
       assert.equal(parsed.ok, false);
       if (!parsed.ok) assert.equal(parsed.code, "too-many-features");

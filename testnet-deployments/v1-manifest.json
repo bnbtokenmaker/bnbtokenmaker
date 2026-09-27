@@ -1,0 +1,21 @@
+{
+  "schema": "bnbtokenmaker-testnet-v1/1",
+  "chainId": 97,
+  "deployedAt": "2026-09-26T11:32:55.474Z",
+  "deployer": "0x8d906573844a63a90eae531d54b76327261293e8",
+  "swapLib": {
+    "address": "0xf82c8783898f3c0f03ece27d412c94ad502f459f",
+    "txHash": "0x087a2fb1e6d4bfd602d29e32e078690db8e4fd973f72511e8a94f34b71962c4b",
+    "blockNumber": "133278808",
+    "codeSha256": "7ce67b8d3cc9da0e0da9c903627121bd106385d8e94f4b2413bc6f1f94a65e3a"
+  },
+  "factory": {
+    "address": "0xb0fade4dae1b17b156d21dfe053ee69e0478b80d",
+    "txHash": "0x7061f91114b87cfa29e95a2d034cd775a980e7473e9d079a02adeb9f6cff5e6c",
+    "blockNumber": "133278814",
+    "codeSha256": "e8a52e0aae9b2c0f7fe6a2db9eea84446fd45bbf336165c74c897757e4aaf25b",
+    "feeRecipient": "0x8d906573844a63a90eae531d54b76327261293e8",
+    "quoteSigner": "0x86b9d52cdeb3d5b80408f9123005b3462d54e8f3",
+    "maxFeeWei": "500000000000000000"
+  }
+}

@@ -12,7 +12,8 @@ import { createPublicClient, http } from "viem";
 import { bscTestnet } from "viem/chains";
 
 import { PHASE6B_CHAIN_ID, PHASE6B_RPC_DEFAULT } from "../deploy/phase6b";
-import type { ChainReader } from "./verify";
+import { tokenAbi } from "../token/factory";
+import type { ChainReader, TokenScalarViews } from "./verify";
 
 const RPC_TIMEOUT_MS = 15_000;
 
@@ -51,7 +52,8 @@ let cached: ChainReader | null = null;
 
 /**
  * Shared server chain reader for chain 97. Pure reads
- * (getTransaction / getTransactionReceipt) — no wallet, no signing.
+ * (getTransaction / getTransactionReceipt / token views) — no wallet,
+ * no signing.
  */
 export function getServerChainReader(): ChainReader {
   if (cached) return cached;
@@ -83,6 +85,69 @@ export function getServerChainReader(): ChainReader {
         })),
       };
     },
+    async getTokenViews(token) {
+      try {
+        const read = (functionName: string) =>
+          client.readContract({
+            address: token,
+            abi: tokenAbi as never,
+            functionName,
+          } as never) as Promise<unknown>;
+        const [
+          buyTaxBps,
+          sellTaxBps,
+          marketingWallet,
+          marketingShareBps,
+          liquidityShareBps,
+          autoLiquidityEnabled,
+          swapThreshold,
+          antiBotEnabled,
+          snipeBlocks,
+          maxSupply,
+        ] = await Promise.all([
+          read("buyTaxBps"),
+          read("sellTaxBps"),
+          read("marketingWallet"),
+          read("marketingShareBps"),
+          read("liquidityShareBps"),
+          read("autoLiquidityEnabled"),
+          read("swapThreshold"),
+          read("antiBotEnabled"),
+          read("snipeBlocks"),
+          read("maxSupply"),
+        ]);
+        if (
+          typeof buyTaxBps !== "bigint" ||
+          typeof sellTaxBps !== "bigint" ||
+          typeof marketingWallet !== "string" ||
+          !/^0x[a-fA-F0-9]{40}$/.test(marketingWallet) ||
+          typeof marketingShareBps !== "bigint" ||
+          typeof liquidityShareBps !== "bigint" ||
+          typeof autoLiquidityEnabled !== "boolean" ||
+          typeof swapThreshold !== "bigint" ||
+          typeof antiBotEnabled !== "boolean" ||
+          typeof snipeBlocks !== "bigint" ||
+          typeof maxSupply !== "bigint"
+        ) {
+          return null;
+        }
+        const views: TokenScalarViews = {
+          buyTaxBps: buyTaxBps.toString(10),
+          sellTaxBps: sellTaxBps.toString(10),
+          marketingWallet: marketingWallet.toLowerCase() as `0x${string}`,
+          marketingShareBps: marketingShareBps.toString(10),
+          liquidityShareBps: liquidityShareBps.toString(10),
+          autoLiquidityEnabled,
+          swapThresholdBase: swapThreshold.toString(10),
+          antiBotEnabled,
+          snipeBlocks: snipeBlocks.toString(10),
+          maxSupplyBase: maxSupply.toString(10),
+        };
+        return views;
+      } catch {
+        return null;
+      }
+    },
   };
   return cached;
 }
@@ -92,8 +157,21 @@ export function resetServerChainReaderForTests(): void {
   cached = null;
 }
 
-/** Expected factory address for server verification (chain 97 only). */
+/**
+ * Expected factory address for server verification (chain 97 only).
+ *
+ * V1-first: the frozen V1 factory (NEXT_PUBLIC_V1_FACTORY_ADDRESS) is the
+ * security-critical comparator for every new deployment — authorize, tx
+ * build, receipt verification and the DB record must all resolve to it.
+ * The legacy Phase 6B factory env (NEXT_PUBLIC_TESTNET_FACTORY_ADDRESS)
+ * remains ONLY as a fallback so historical fee-free receipts can still be
+ * recorded when no V1 factory is configured; it is never preferred while
+ * V1 is set, so a stale legacy address can never shadow the canonical V1
+ * factory on the record path.
+ */
 export function getExpectedFactory(): `0x${string}` | null {
+  const v1 = (process.env.NEXT_PUBLIC_V1_FACTORY_ADDRESS ?? "").trim();
+  if (/^0x[a-fA-F0-9]{40}$/.test(v1)) return v1 as `0x${string}`;
   const raw = (process.env.NEXT_PUBLIC_TESTNET_FACTORY_ADDRESS ?? "").trim();
   return /^0x[a-fA-F0-9]{40}$/.test(raw) ? (raw as `0x${string}`) : null;
 }

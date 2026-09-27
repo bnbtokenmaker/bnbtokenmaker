@@ -24,6 +24,9 @@ export const ADMIN_FEATURE_FILTERS = [
   "maxWallet",
   "blacklist",
   "whitelist",
+  "trading",
+  "antiBot",
+  "autoLiquidity",
 ] as const;
 
 export type AdminFeatureFilter = (typeof ADMIN_FEATURE_FILTERS)[number];

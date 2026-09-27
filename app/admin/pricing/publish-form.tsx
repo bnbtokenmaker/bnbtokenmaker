@@ -27,25 +27,46 @@ const FIELDS = [
   { key: "maxWallet", label: "Max wallet" },
   { key: "blacklist", label: "Blacklist" },
   { key: "whitelist", label: "Whitelist" },
+  { key: "trading", label: "Trading fees" },
+  { key: "antiBot", label: "Anti-bot" },
+  { key: "autoLiquidity", label: "Auto-liquidity" },
 ] as const;
 
 type FeeKey = (typeof FIELDS)[number]["key"];
 
+const FIELD_DEFAULTS: Record<FeeKey, string> = {
+  base: "0.050",
+  burn: "0.005",
+  mint: "0.010",
+  pause: "0.005",
+  maxTx: "0.010",
+  maxWallet: "0.010",
+  blacklist: "0.010",
+  whitelist: "0.010",
+  trading: "0.020",
+  antiBot: "0.010",
+  autoLiquidity: "0.015",
+};
+
 export function PublishForm({
   current,
 }: {
-  current: Record<FeeKey, string> | null;
+  /** Null per key = capability not offered in the active version. */
+  current: Record<FeeKey, string | null> | null;
 }) {
   const router = useRouter();
   const [values, setValues] = useState<Record<FeeKey, string>>(() => ({
-    base: current?.base ?? "0.050",
-    burn: current?.burn ?? "0.005",
-    mint: current?.mint ?? "0.010",
-    pause: current?.pause ?? "0.005",
-    maxTx: current?.maxTx ?? "0.010",
-    maxWallet: current?.maxWallet ?? "0.010",
-    blacklist: current?.blacklist ?? "0.010",
-    whitelist: current?.whitelist ?? "0.010",
+    base: current?.base ?? FIELD_DEFAULTS.base,
+    burn: current?.burn ?? FIELD_DEFAULTS.burn,
+    mint: current?.mint ?? FIELD_DEFAULTS.mint,
+    pause: current?.pause ?? FIELD_DEFAULTS.pause,
+    maxTx: current?.maxTx ?? FIELD_DEFAULTS.maxTx,
+    maxWallet: current?.maxWallet ?? FIELD_DEFAULTS.maxWallet,
+    blacklist: current?.blacklist ?? FIELD_DEFAULTS.blacklist,
+    whitelist: current?.whitelist ?? FIELD_DEFAULTS.whitelist,
+    trading: current?.trading ?? FIELD_DEFAULTS.trading,
+    antiBot: current?.antiBot ?? FIELD_DEFAULTS.antiBot,
+    autoLiquidity: current?.autoLiquidity ?? FIELD_DEFAULTS.autoLiquidity,
   }));
   const [reviewing, setReviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -150,7 +171,7 @@ export function PublishForm({
             />
             {current ? (
               <span className={`${styles.small} ${styles.muted}`} id={`pricing-old-${key}`}>
-                Current: {current[key]} BNB
+                Current: {current[key] === null ? "not offered" : `${current[key]} BNB`}
               </span>
             ) : null}
           </div>
@@ -185,7 +206,7 @@ export function PublishForm({
               {FIELDS.map(({ key, label }) => (
                 <tr key={key}>
                   <td>{label}</td>
-                  <td className={styles.mono}>{current ? `${current[key]} BNB` : "—"}</td>
+                  <td className={styles.mono}>{current ? (current[key] === null ? "not offered" : `${current[key]} BNB`) : "—"}</td>
                   <td className={styles.mono}>{values[key].trim()} BNB</td>
                 </tr>
               ))}

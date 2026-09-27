@@ -102,6 +102,11 @@ export function parseRecordHint(input: unknown): RecordHint {
 
 // ---------------------------------------------------------------------------
 // Versioned feature configuration (v1).
+//
+// V1 keeps version 1 with backward-compatible reads: the seven Phase 7C
+// keys are required; the three V1 capability keys are optional and default
+// to false when absent (historical rows genuinely predate them — no silent
+// reinterpretation). Writers always emit all ten keys.
 // ---------------------------------------------------------------------------
 
 export type FeatureConfigV1 = {
@@ -113,6 +118,9 @@ export type FeatureConfigV1 = {
   maxWallet: boolean;
   blacklist: boolean;
   whitelist: boolean;
+  trading: boolean;
+  antiBot: boolean;
+  autoLiquidity: boolean;
 };
 
 const FEATURE_KEYS = [
@@ -124,6 +132,10 @@ const FEATURE_KEYS = [
   "blacklist",
   "whitelist",
 ] as const;
+
+const V1_FEATURE_KEYS = ["trading", "antiBot", "autoLiquidity"] as const;
+
+const ALL_FEATURE_KEYS = [...FEATURE_KEYS, ...V1_FEATURE_KEYS] as const;
 
 /** Build the canonical v1 feature config from an on-chain bitmap. */
 export function featureConfigFromBitmap(bitmap: bigint): FeatureConfigV1 {
@@ -137,6 +149,9 @@ export function featureConfigFromBitmap(bitmap: bigint): FeatureConfigV1 {
     maxWallet: flags.maxWallet,
     blacklist: flags.blacklist,
     whitelist: flags.whitelist,
+    trading: flags.trading,
+    antiBot: flags.antiBot,
+    autoLiquidity: flags.autoLiquidity,
   };
 }
 
@@ -149,12 +164,21 @@ export function parseFeatureConfig(input: unknown): FeatureConfigV1 | null {
     if (typeof input[key] !== "boolean") return null;
     out[key] = input[key] as boolean;
   }
+  for (const key of V1_FEATURE_KEYS) {
+    const value = input[key];
+    if (value === undefined) {
+      out[key] = false;
+      continue;
+    }
+    if (typeof value !== "boolean") return null;
+    out[key] = value;
+  }
   return { version: FEATURE_CONFIG_VERSION, ...(out as Omit<FeatureConfigV1, "version">) };
 }
 
 /** Feature ids selected by a v1 config (canonical order). */
 export function featureIdsFromConfig(config: FeatureConfigV1): string[] {
-  return FEATURE_KEYS.filter((key) => config[key]);
+  return ALL_FEATURE_KEYS.filter((key) => config[key]);
 }
 
 // ---------------------------------------------------------------------------

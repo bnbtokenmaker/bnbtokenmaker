@@ -45,20 +45,24 @@ describe("BNBTokenMakerToken — feature combinations", () => {
       })
     );
     await token.write.transfer([alice.account.address, M("1000")]);
-    // Wallet full -> any further credit reverts.
-    await expectRevert(
-      token.write.transfer([alice.account.address, M("1")]),
-      /MaxWalletExceeded/
-    );
+    // Owner seeding is an exempt leg (distribution can never deadlock), so a
+    // further owner credit succeeds by design; the cap binds non-exempt flow.
+    await token.write.transfer([alice.account.address, M("1")]);
     const asAlice = await tokenAs(token.address, alice);
     // Over maxTx reverts even with room on the other side.
     await expectRevert(
       asAlice.write.transfer([bob.account.address, M("1001")]),
       /MaxTxExceeded/
     );
+    // Non-exempt credit past a full wallet reverts.
+    await token.write.transfer([bob.account.address, M("1000")]);
+    const asBob = await tokenAs(token.address, bob);
+    await expectRevert(
+      asAlice.write.transfer([bob.account.address, M("1")]),
+      /MaxWalletExceeded/
+    );
     // Within both limits succeeds.
-    await asAlice.write.transfer([bob.account.address, M("400")]);
-    await asAlice.write.transfer([bob.account.address, M("400")]);
+    await asAlice.write.transfer([owner.account.address, M("400")]);
   });
 
   it("blacklist + whitelist: blacklist wins, whitelist still gates others", async () => {

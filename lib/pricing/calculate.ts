@@ -3,6 +3,7 @@ import {
   INCLUDED_FEATURES,
   INCOMPATIBLE_GROUPS,
   PAID_FEATURES,
+  REQUIRED_FEATURES,
   kindOfFeature,
 } from "./features";
 import type {
@@ -32,7 +33,10 @@ export function validateConfig(config: PricingConfig): ValidationResult {
       errors.push(new PricingError("negative-fee", "feature fee must not be negative", key));
     }
   }
-  for (const id of PAID_FEATURES) {
+  // Backward compatibility: the seven Phase 7C fees are always required;
+  // the three V1 capability fees are optional — absent means "not offered
+  // in this pricing version" (pre-migration rows carry NULLs).
+  for (const id of REQUIRED_FEATURES) {
     if (config.featureFees[id] === undefined) {
       errors.push(new PricingError("missing-feature-fee", "no fee configured for a paid feature", id));
     }
@@ -70,6 +74,12 @@ export function validateSelection(
     if (kind === "comingSoon") {
       errors.push(
         new PricingError("coming-soon-feature-selected", "coming soon features are not purchasable", id)
+      );
+      continue;
+    }
+    if (config.featureFees[id as PaidFeatureId] === undefined) {
+      errors.push(
+        new PricingError("feature-not-offered", "this pricing version does not offer the selected feature", id)
       );
       continue;
     }

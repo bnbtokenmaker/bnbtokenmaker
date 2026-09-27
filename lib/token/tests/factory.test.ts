@@ -6,6 +6,8 @@ import {
   explorerTokenUrl,
   factoryAddress,
   parseTokenCreatedLog,
+  v1FactoryAddress,
+  V1_FACTORY_CHAIN_ID,
 } from "../factory";
 
 const TOKEN = "0x1111111111111111111111111111111111111111";
@@ -51,6 +53,7 @@ describe("factory boundary", () => {
     assert.deepEqual(parsed.featureFlags, {
       burn: true, mint: true, pause: false, maxTx: true,
       maxWallet: false, blacklist: true, whitelist: false,
+      trading: false, antiBot: false, autoLiquidity: false,
     });
   });
 
@@ -69,6 +72,27 @@ describe("factory boundary", () => {
     assert.equal(factoryAddress(97), null);
     assert.equal(factoryAddress(56), null);
     assert.equal(factoryAddress(null), null);
+  });
+
+  it("V1 factory boundary: 97-only, env-driven, 56 hard-disabled", () => {
+    assert.equal(V1_FACTORY_CHAIN_ID, 97);
+    const key = "NEXT_PUBLIC_V1_FACTORY_ADDRESS";
+    const saved = process.env[key];
+    try {
+      delete process.env[key];
+      assert.equal(v1FactoryAddress(97), null);
+      assert.equal(v1FactoryAddress(56), null);
+      process.env[key] = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+      assert.equal(v1FactoryAddress(97), "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+      // Chain 56 stays disabled even with the env set.
+      assert.equal(v1FactoryAddress(56), null);
+      assert.equal(v1FactoryAddress(null), null);
+      process.env[key] = "not-an-address";
+      assert.equal(v1FactoryAddress(97), null);
+    } finally {
+      if (saved === undefined) delete process.env[key];
+      else process.env[key] = saved;
+    }
   });
 
   it("explorer links only for testnet tokens", () => {

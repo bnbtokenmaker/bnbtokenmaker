@@ -12,7 +12,7 @@
  */
 
 
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { deployments, type DeploymentRow } from "../db/schema";
@@ -38,6 +38,17 @@ export class DeploymentConflictError extends Error {
 export type DeploymentStore = {
   upsertDeployment: (record: VerifiedDeploymentRecord) => Promise<UpsertResult>;
   findByTx: (chainId: number, txHash: string) => Promise<DeploymentRow | null>;
+  /**
+   * Read-only discovery: recent verified deployments by deployer. Returns
+   * PUBLIC on-chain facts only (no auth needed, no private data exists in
+   * these rows). Callers must still verify on-chain owner() — a deployer
+   * may have transferred the token since.
+   */
+  listByDeployer: (
+    chainId: number,
+    deployer: string,
+    limit: number
+  ) => Promise<DeploymentRow[]>;
 };
 
 function sameFacts(a: VerifiedDeploymentRecord, row: DeploymentRow): boolean {
@@ -96,6 +107,26 @@ export class PgDeploymentStore implements DeploymentStore {
     return rows[0] ?? null;
   }
 
+  async listByDeployer(
+    chainId: number,
+    deployer: string,
+    limit: number
+  ): Promise<DeploymentRow[]> {
+    const db = getDb();
+    const take = Math.min(Math.max(Math.floor(limit) || 1, 1), 20);
+    return db
+      .select()
+      .from(deployments)
+      .where(
+        and(
+          eq(deployments.chainId, chainId),
+          eq(deployments.deployerAddress, deployer.toLowerCase())
+        )
+      )
+      .orderBy(desc(deployments.id))
+      .limit(take);
+  }
+
   async upsertDeployment(record: VerifiedDeploymentRecord): Promise<UpsertResult> {
     const db = getDb();
     const existing = await this.findByTx(record.chainId, record.txHash);
@@ -138,6 +169,19 @@ export class InMemoryDeploymentStore implements DeploymentStore {
 
   async findByTx(chainId: number, txHash: string): Promise<DeploymentRow | null> {
     return this.rows.get(this.key(chainId, txHash)) ?? null;
+  }
+
+  async listByDeployer(
+    chainId: number,
+    deployer: string,
+    limit: number
+  ): Promise<DeploymentRow[]> {
+    const take = Math.min(Math.max(Math.floor(limit) || 1, 1), 20);
+    const want = deployer.toLowerCase();
+    return [...this.rows.values()]
+      .filter((row) => row.chainId === chainId && row.deployerAddress === want)
+      .sort((a, b) => b.id - a.id)
+      .slice(0, take);
   }
 
   async upsertDeployment(record: VerifiedDeploymentRecord): Promise<UpsertResult> {

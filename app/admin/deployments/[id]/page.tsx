@@ -106,6 +106,18 @@ export default async function AdminDeploymentDetailPage({
         (item): item is string => typeof item === "string"
       )
     : [];
+  const advanced =
+    snapshot.advancedConfig !== null && typeof snapshot.advancedConfig === "object"
+      ? (snapshot.advancedConfig as Record<string, unknown>)
+      : null;
+  const paidBinding =
+    snapshot.paidBinding !== null && typeof snapshot.paidBinding === "object"
+      ? (snapshot.paidBinding as Record<string, unknown>)
+      : null;
+  const strField = (record: Record<string, unknown>, key: string): string | null => {
+    const v = record[key];
+    return typeof v === "string" ? v : null;
+  };
 
   return (
     <AdminShell identifier={access.identifier} active="deployments">
@@ -327,8 +339,84 @@ export default async function AdminDeploymentDetailPage({
                 </span>
               )}
             </dd>
+            {paidBinding ? (
+              <>
+                <dt>Paid fee (attested)</dt>
+                <dd>
+                  <span className={styles.mono}>
+                    {strField(paidBinding, "feeWei") ?? "—"}
+                  </span>{" "}
+                  wei
+                </dd>
+                <dt>Quote nonce</dt>
+                <dd>
+                  <span className={styles.mono}>
+                    {strField(paidBinding, "nonce") ?? "—"}
+                  </span>
+                </dd>
+              </>
+            ) : null}
           </dl>
         </section>
+
+        {advanced ? (
+          <section className={styles.card} aria-labelledby="detail-advanced">
+            <h2 id="detail-advanced">Advanced configuration</h2>
+            <p className={`${styles.muted} ${styles.small}`}>
+              Chain-read scalar views captured at record time.
+            </p>
+            <dl className={styles.dl}>
+              <dt>Buy / sell tax (bps)</dt>
+              <dd>
+                <span className={styles.mono}>
+                  {strField(advanced, "buyTaxBps") ?? "—"} / {strField(advanced, "sellTaxBps") ?? "—"}
+                </span>
+              </dd>
+              <dt>Marketing wallet</dt>
+              <dd>
+                <span className={styles.mono}>{strField(advanced, "marketingWallet") ?? "—"}</span>
+              </dd>
+              <dt>Marketing / liquidity shares (bps)</dt>
+              <dd>
+                <span className={styles.mono}>
+                  {strField(advanced, "marketingShareBps") ?? "—"} / {strField(advanced, "liquidityShareBps") ?? "—"}
+                </span>
+              </dd>
+              <dt>Max lifetime supply (base units)</dt>
+              <dd>
+                <span className={styles.mono}>
+                  {strField(advanced, "maxSupplyBase") === "0"
+                    ? "Unlimited"
+                    : (strField(advanced, "maxSupplyBase") ?? "—")}
+                </span>
+              </dd>
+              <dt>Anti-bot / snipe blocks</dt>
+              <dd>
+                <span className={styles.mono}>
+                  {typeof advanced.antiBotEnabled === "boolean"
+                    ? advanced.antiBotEnabled
+                      ? `enabled · ${strField(advanced, "snipeBlocks") ?? "—"} blocks`
+                      : "disabled"
+                    : "—"}
+                </span>
+              </dd>
+              <dt>Swap threshold (base units)</dt>
+              <dd>
+                <span className={styles.mono}>{strField(advanced, "swapThresholdBase") ?? "—"}</span>
+              </dd>
+              <dt>Auto-liquidity</dt>
+              <dd>
+                <span className={styles.mono}>
+                  {typeof advanced.autoLiquidityEnabled === "boolean"
+                    ? advanced.autoLiquidityEnabled
+                      ? "enabled"
+                      : "disabled"
+                    : "—"}
+                </span>
+              </dd>
+            </dl>
+          </section>
+        ) : null}
       </div>
     </AdminShell>
   );

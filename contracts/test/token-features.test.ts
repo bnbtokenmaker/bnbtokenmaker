@@ -52,7 +52,7 @@ describe("BNBTokenMakerToken — individual features", () => {
         asAlice.write.burn([M("1")]),
         /balance|insufficient/i
       );
-      await expectRevert(token.write.burn([0n]), /ZeroBurnAmount/);
+      await expectRevert(token.write.burn([0n]), /ZeroAmount/);
     });
   });
 
@@ -93,7 +93,7 @@ describe("BNBTokenMakerToken — individual features", () => {
       );
       await expectRevert(
         token.write.mint([alice.account.address, 0n]),
-        /ZeroMintAmount/
+        /ZeroAmount/
       );
     });
   });
@@ -197,17 +197,21 @@ describe("BNBTokenMakerToken — individual features", () => {
   describe("maxWallet", () => {
     const cap = M("2000");
     it("recipient up to cap succeeds; exceeding reverts", async () => {
-      const { owner, alice, bob } = await accounts();
+      const { owner, alice, bob, carol } = await accounts();
       const token = await deployToken(
         baseConfig(owner.account.address, { maxWalletAmount: cap })
       );
       await token.write.transfer([alice.account.address, cap]);
+      await token.write.transfer([bob.account.address, cap]);
+      // Non-exempt credit past a full wallet reverts (owner seeding legs
+      // are exempt by design so distribution can never deadlock).
+      const asBob = await tokenAs(token.address, bob);
       await expectRevert(
-        token.write.transfer([alice.account.address, M("1")]),
+        asBob.write.transfer([alice.account.address, M("1")]),
         /MaxWalletExceeded/
       );
       // A different recipient still has room.
-      await token.write.transfer([bob.account.address, M("1")]);
+      await token.write.transfer([carol.account.address, M("1")]);
     });
 
     it("owner recipient is exempt (deployment never blocked)", async () => {

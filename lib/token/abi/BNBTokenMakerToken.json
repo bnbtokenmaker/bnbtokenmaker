@@ -64,6 +64,56 @@
               "internalType": "bool",
               "name": "whitelistEnabled",
               "type": "bool"
+            },
+            {
+              "internalType": "uint256",
+              "name": "buyTaxBps",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sellTaxBps",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "marketingWallet",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "marketingShareBps",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "liquidityShareBps",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bool",
+              "name": "autoLiquidityEnabled",
+              "type": "bool"
+            },
+            {
+              "internalType": "uint256",
+              "name": "swapThreshold",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bool",
+              "name": "antiBotEnabled",
+              "type": "bool"
+            },
+            {
+              "internalType": "uint256",
+              "name": "snipeBlocks",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maxSupply",
+              "type": "uint256"
             }
           ],
           "internalType": "struct BNBTokenMakerToken.TokenConfig",
@@ -86,14 +136,8 @@
       "type": "error"
     },
     {
-      "inputs": [
-        {
-          "internalType": "uint8",
-          "name": "decimals",
-          "type": "uint8"
-        }
-      ],
-      "name": "DecimalsOutOfRange",
+      "inputs": [],
+      "name": "CooldownActive",
       "type": "error"
     },
     {
@@ -184,16 +228,6 @@
     },
     {
       "inputs": [],
-      "name": "EmptyName",
-      "type": "error"
-    },
-    {
-      "inputs": [],
-      "name": "EmptySymbol",
-      "type": "error"
-    },
-    {
-      "inputs": [],
       "name": "EnforcedPause",
       "type": "error"
     },
@@ -209,8 +243,19 @@
       "type": "error"
     },
     {
-      "inputs": [],
-      "name": "InvalidSymbol",
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "mintedAfter",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maxSupply",
+          "type": "uint256"
+        }
+      ],
+      "name": "MaxSupplyExceeded",
       "type": "error"
     },
     {
@@ -232,22 +277,6 @@
     {
       "inputs": [
         {
-          "internalType": "uint256",
-          "name": "maxWallet",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "maxTx",
-          "type": "uint256"
-        }
-      ],
-      "name": "MaxWalletBelowMaxTx",
-      "type": "error"
-    },
-    {
-      "inputs": [
-        {
           "internalType": "address",
           "name": "account",
           "type": "address"
@@ -264,11 +293,6 @@
         }
       ],
       "name": "MaxWalletExceeded",
-      "type": "error"
-    },
-    {
-      "inputs": [],
-      "name": "NameTooLong",
       "type": "error"
     },
     {
@@ -295,6 +319,26 @@
     },
     {
       "inputs": [],
+      "name": "PairBlacklisted",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "RouterOnly",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "TradingAlreadyEnabled",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "TradingDisabled",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "WhitelistEnforced",
       "type": "error"
     },
@@ -305,18 +349,27 @@
     },
     {
       "inputs": [],
-      "name": "ZeroBurnAmount",
+      "name": "ZeroAmount",
       "type": "error"
     },
     {
-      "inputs": [],
-      "name": "ZeroInitialSupply",
-      "type": "error"
-    },
-    {
-      "inputs": [],
-      "name": "ZeroMintAmount",
-      "type": "error"
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "pair",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "flagged",
+          "type": "bool"
+        }
+      ],
+      "name": "AMMPairSet",
+      "type": "event"
     },
     {
       "anonymous": false,
@@ -368,6 +421,76 @@
         {
           "indexed": true,
           "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "exempt",
+          "type": "bool"
+        }
+      ],
+      "name": "FeeExemptSet",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "tokenAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "bnbAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "lpBurned",
+          "type": "uint256"
+        }
+      ],
+      "name": "LiquidityAdded",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "bnbAmount",
+          "type": "uint256"
+        }
+      ],
+      "name": "MarketingPaid",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        }
+      ],
+      "name": "MarketingWalletSet",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
           "name": "previousOwner",
           "type": "address"
         },
@@ -392,6 +515,69 @@
         }
       ],
       "name": "Paused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "tokensSwapped",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "bnbForMarketing",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "lpBurned",
+          "type": "uint256"
+        }
+      ],
+      "name": "SwapBackExecuted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [],
+      "name": "SwapBackFailed",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "enabled",
+          "type": "bool"
+        }
+      ],
+      "name": "SwapBackToggled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "launchBlock",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "snipeBlocks",
+          "type": "uint256"
+        }
+      ],
+      "name": "TradingEnabled",
       "type": "event"
     },
     {
@@ -465,6 +651,32 @@
       "type": "event"
     },
     {
+      "inputs": [],
+      "name": "FACTORY",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "GENERATOR",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [
         {
           "internalType": "address",
@@ -483,6 +695,19 @@
           "internalType": "uint256",
           "name": "",
           "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "antiBotEnabled",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
         }
       ],
       "stateMutability": "view",
@@ -510,6 +735,38 @@
         }
       ],
       "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "autoLiquidityEnabled",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "automatedMarketMakerPairs",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
       "type": "function"
     },
     {
@@ -590,12 +847,51 @@
     },
     {
       "inputs": [],
+      "name": "buyTaxBps",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "decimals",
       "outputs": [
         {
           "internalType": "uint8",
           "name": "",
           "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "enableTrading",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "feeExempt",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
         }
       ],
       "stateMutability": "view",
@@ -641,6 +937,71 @@
     },
     {
       "inputs": [],
+      "name": "launchBlock",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "liquidityShareBps",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "marketingShareBps",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "marketingWallet",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "maxSupply",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "maxTxAmount",
       "outputs": [
         {
@@ -654,38 +1015,12 @@
     },
     {
       "inputs": [],
-      "name": "maxTxEnabled",
-      "outputs": [
-        {
-          "internalType": "bool",
-          "name": "",
-          "type": "bool"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
       "name": "maxWalletAmount",
       "outputs": [
         {
           "internalType": "uint256",
           "name": "",
           "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "maxWalletEnabled",
-      "outputs": [
-        {
-          "internalType": "bool",
-          "name": "",
-          "type": "bool"
         }
       ],
       "stateMutability": "view",
@@ -789,6 +1124,37 @@
       "type": "function"
     },
     {
+      "inputs": [],
+      "name": "sellTaxBps",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "pair",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "flagged",
+          "type": "bool"
+        }
+      ],
+      "name": "setAMMPair",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [
         {
           "internalType": "address",
@@ -802,6 +1168,50 @@
         }
       ],
       "name": "setBlacklisted",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "exempt",
+          "type": "bool"
+        }
+      ],
+      "name": "setFeeExempt",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "wallet",
+          "type": "address"
+        }
+      ],
+      "name": "setMarketingWallet",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bool",
+          "name": "enabled",
+          "type": "bool"
+        }
+      ],
+      "name": "setSwapBackEnabled",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -839,6 +1249,45 @@
     },
     {
       "inputs": [],
+      "name": "snipeBlocks",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "swapBackEnabled",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "swapThreshold",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "symbol",
       "outputs": [
         {
@@ -852,12 +1301,38 @@
     },
     {
       "inputs": [],
+      "name": "totalMinted",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "totalSupply",
       "outputs": [
         {
           "internalType": "uint256",
           "name": "",
           "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "tradingEnabled",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
         }
       ],
       "stateMutability": "view",
@@ -961,6 +1436,10 @@
       ],
       "stateMutability": "view",
       "type": "function"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "receive"
     }
   ]
 }

@@ -8,6 +8,7 @@ import {
   explorerTokenPageUrl,
   explorerTxUrl,
   findDeployedTokenAddress,
+  findDeploymentPaid,
   isReceiptSuccess,
   prepareDeploymentTx,
   shortenTxHash,
@@ -34,6 +35,9 @@ function validConfig() {
       maxWallet: false,
       blacklist: false,
       whitelist: false,
+      trading: false,
+      antiBot: false,
+      autoLiquidity: false,
     },
     maxTxPercent: "1",
   });
@@ -124,6 +128,33 @@ describe("deployment tx boundary", () => {
       ]),
       null
     );
+  });
+
+  it("finds the DeploymentPaid attestation, null when absent", () => {
+    const topic0 = keccak256(
+      stringToHex("DeploymentPaid(address,address,uint256,bytes32,bytes32)")
+    );
+    const fee = 50000n;
+    const version = `0x${"ab".repeat(32)}` as `0x${string}`;
+    const nonce = `0x${"cd".repeat(32)}` as `0x${string}`;
+    const data = encodeAbiParameters(
+      [{ type: "uint256" }, { type: "bytes32" }],
+      [fee, version]
+    );
+    const found = findDeploymentPaid([
+      {
+        topics: [topic0, pad(TOKEN), pad(OWNER), pad(nonce)],
+        data,
+      },
+    ]);
+    assert.ok(found);
+    assert.equal(found.token.toLowerCase(), TOKEN.toLowerCase());
+    assert.equal(found.payer.toLowerCase(), OWNER.toLowerCase());
+    assert.equal(found.feeWei, fee);
+    assert.equal(found.pricingVersion, version);
+    assert.equal(found.nonce, nonce);
+    assert.equal(findDeploymentPaid([]), null);
+    assert.equal(findDeploymentPaid(null), null);
   });
 
   it("builds testnet explorer links and shortens hashes", () => {

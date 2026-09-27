@@ -137,6 +137,7 @@ describe("deployments — record service (verify → idempotent upsert)", () => 
       ...deps(store),
       store: {
         findByTx: async () => null,
+        listByDeployer: async () => [],
         upsertDeployment: async () => {
           throw new Error("postgres connection refused at 10.1.2.3:5432");
         },

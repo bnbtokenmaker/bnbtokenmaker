@@ -7,16 +7,19 @@ export type PaidFeatureId =
   | "maxTx"
   | "maxWallet"
   | "blacklist"
-  | "whitelist";
+  | "whitelist"
+  | "trading"
+  | "antiBot"
+  | "autoLiquidity";
 
 export type IncludedFeatureId = "transferOwnership" | "renounceOwnership";
 
-export type ComingSoonFeatureId =
-  | "buySellTax"
-  | "marketingWallet"
-  | "feeExemption"
-  | "antiBot"
-  | "autoLiquidity";
+/**
+ * V1: all former coming-soon capabilities graduated to paid features.
+ * The kind is retained for forward compatibility (unknown future ids);
+ * no purchasable capability is coming-soon in V1.
+ */
+export type ComingSoonFeatureId = never;
 
 export type FeatureId = PaidFeatureId | IncludedFeatureId | ComingSoonFeatureId;
 

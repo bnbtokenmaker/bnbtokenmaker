@@ -4,10 +4,13 @@
  * Trust model: the ONLY client input is { chainId, txHash }. Everything
  * recorded is independently derived from the chain:
  *   transaction  → to (must be the expected factory), from (deployer),
- *                   value (must be zero — the factory is non-payable)
+ *                   value (the fee fact: exact quoted fee, or zero on the
+ *                   legacy fee-free path)
  *   receipt      → status success, TokenCreated event from the factory
  *   event args   → contract, creator/owner, name/symbol/decimals/supply,
  *                   feature PRESENCE bitmap
+ *   V1 receipt   → DeploymentPaid attestation (fee/pricingVersion/nonce),
+ *                   reconciled against tx value + token + payer when present
  * A client-supplied contract address has no field to arrive in and therefore
  * cannot override the receipt-derived address — by construction.
  *
@@ -16,9 +19,10 @@
  */
 
 
-import { parseTokenCreatedLog } from "../token/factory";
+import { parseDeploymentPaidLog, parseTokenCreatedLog } from "../token/factory";
 import {
   featureConfigFromBitmap,
+  featureIdsFromConfig,
   normalizeAddress,
   toCanonicalUintString,
   type FeatureConfigV1,
@@ -31,6 +35,7 @@ export type VerificationErrorCode =
   | "tx-reverted"
   | "factory-mismatch"
   | "nonzero-value"
+  | "fee-mismatch"
   | "event-missing"
   | "rpc-unavailable"
   | "factory-unavailable";
@@ -71,12 +76,40 @@ export type ChainReader = {
   getTransactionReceipt: (
     hash: `0x${string}`
   ) => Promise<ChainReceipt | null | undefined>;
+  /**
+   * V1 token scalar views (tax/marketing/anti-bot/liquidity/cap), read via
+   * eth_call for §8 persistence. Optional: when unavailable the record is
+   * still stored with `advancedConfig: null`.
+   */
+  getTokenViews?: (token: `0x${string}`) => Promise<TokenScalarViews | null>;
+};
+
+/** Server-read V1 money/launch parameters (canonical decimal strings). */
+export type TokenScalarViews = {
+  buyTaxBps: string;
+  sellTaxBps: string;
+  marketingWallet: `0x${string}`;
+  marketingShareBps: string;
+  liquidityShareBps: string;
+  autoLiquidityEnabled: boolean;
+  swapThresholdBase: string;
+  antiBotEnabled: boolean;
+  snipeBlocks: string;
+  maxSupplyBase: string;
 };
 
 /** Server-computed price snapshot input (wired to the pricing source). */
 export type QuoteSnapshotInput = {
   pricingVersion: string;
   totalWei: string;
+};
+
+/** On-chain payment attestation from the DeploymentPaid event (V1 factory). */
+export type PaidBinding = {
+  feeWei: string;
+  /** bytes32 pricing-version binding, hex. */
+  pricingVersion: `0x${string}`;
+  nonce: `0x${string}`;
 };
 
 export type VerifiedDeploymentRecord = {
@@ -91,7 +124,13 @@ export type VerifiedDeploymentRecord = {
   /** Canonical integer string, base units. */
   initialSupplyBase: string;
   featureConfig: FeatureConfigV1;
-  quoteSnapshot: QuoteSnapshotInput & { selectedFeatures: string[] };
+  quoteSnapshot: QuoteSnapshotInput & {
+    selectedFeatures: string[];
+    /** Present for V1-factory deployments (absent for legacy fee-free ones). */
+    paidBinding: PaidBinding | null;
+    /** V1 scalar views; null when the reader cannot provide them. */
+    advancedConfig: TokenScalarViews | null;
+  };
   /** Canonical integer wei string (actual fee charged = tx value). */
   platformFeeWei: string;
   blockNumber: number | null;
@@ -151,10 +190,13 @@ export async function verifyDeployment(input: {
       "transaction was not sent to the expected factory"
     );
   }
-  if (typeof tx.value !== "bigint" || tx.value !== 0n) {
+  // V1 commercial deployments carry the exact quoted fee as tx value; the
+  // legacy fee-free path carries zero. The value IS the fee fact and is
+  // reconciled against DeploymentPaid below when present.
+  if (typeof tx.value !== "bigint" || tx.value < 0n) {
     throw new VerificationError(
-      "nonzero-value",
-      "deployment transaction must carry zero native value"
+      "fee-mismatch",
+      "deployment transaction value is not a valid fee amount"
     );
   }
   if (typeof tx.from !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(tx.from)) {
@@ -180,20 +222,28 @@ export async function verifyDeployment(input: {
   // Decode the FIRST well-formed TokenCreated log emitted BY the factory.
   // The contract address comes from this event — never from client input.
   let decoded: ReturnType<typeof parseTokenCreatedLog> = null;
+  let paid: ReturnType<typeof parseDeploymentPaidLog> = null;
   for (const log of receipt.logs) {
     if (!log || typeof log !== "object") continue;
     if (typeof log.address !== "string") continue;
     if (log.address.toLowerCase() !== factory) continue;
     if (!Array.isArray(log.topics) || log.topics.length === 0) continue;
     if (typeof log.data !== "string" || !log.data.startsWith("0x")) continue;
-    const parsed = parseTokenCreatedLog({
-      topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
-      data: log.data as `0x${string}`,
-    });
-    if (parsed) {
-      decoded = parsed;
-      break;
+    const topics = log.topics as [`0x${string}`, ...`0x${string}`[]];
+    const data = log.data as `0x${string}`;
+    if (!decoded) {
+      const parsed = parseTokenCreatedLog({ topics, data });
+      if (parsed) {
+        decoded = parsed;
+      }
     }
+    if (!paid) {
+      const parsedPaid = parseDeploymentPaidLog({ topics, data });
+      if (parsedPaid) {
+        paid = parsedPaid;
+      }
+    }
+    if (decoded && paid) break;
   }
   if (!decoded) {
     throw new VerificationError(
@@ -202,24 +252,54 @@ export async function verifyDeployment(input: {
     );
   }
 
+  // V1 payment reconciliation (legacy fee-free deployments carry no
+  // DeploymentPaid event and keep the informational path). When present,
+  // the attested fee MUST equal the transaction value and the attested
+  // token/payer MUST match the created token/sender — fail closed.
+  let paidBinding: PaidBinding | null = null;
+  if (paid) {
+    const paidToken = normalizeAddress(paid.token);
+    const createdToken = normalizeAddress(decoded.token);
+    const paidPayer = normalizeAddress(paid.payer);
+    const sender = normalizeAddress(tx.from);
+    if (paidToken !== createdToken || paidPayer !== sender) {
+      throw new VerificationError(
+        "fee-mismatch",
+        "DeploymentPaid attestation does not match the created token/payer"
+      );
+    }
+    if (paid.feeWei !== tx.value) {
+      throw new VerificationError(
+        "fee-mismatch",
+        "DeploymentPaid fee does not match the transaction value"
+      );
+    }
+    paidBinding = {
+      feeWei: toCanonicalUintString(paid.feeWei),
+      pricingVersion: paid.pricingVersion,
+      nonce: paid.nonce,
+    };
+  }
+
   const featureConfig = featureConfigFromBitmap(decoded.features);
-  const selectedFeatures = Object.entries({
-    burn: featureConfig.burn,
-    mint: featureConfig.mint,
-    pause: featureConfig.pause,
-    maxTx: featureConfig.maxTx,
-    maxWallet: featureConfig.maxWallet,
-    blacklist: featureConfig.blacklist,
-    whitelist: featureConfig.whitelist,
-  })
-    .filter(([, enabled]) => enabled)
-    .map(([id]) => id);
+  const selectedFeatures = featureIdsFromConfig(featureConfig);
 
   let quote: QuoteSnapshotInput;
   try {
     quote = await quoteForFeatures(selectedFeatures);
   } catch {
     throw new VerificationError("rpc-unavailable", "quote snapshot failed");
+  }
+
+  // Best-effort V1 scalar views for §8 persistence (null when unavailable).
+  let advancedConfig: TokenScalarViews | null = null;
+  if (typeof chain.getTokenViews === "function") {
+    try {
+      const views = await chain.getTokenViews(normalizeAddress(decoded.token));
+      if (views) advancedConfig = views;
+    } catch {
+      advancedConfig = null;
+    }
   }
 
   return {
@@ -233,7 +313,7 @@ export async function verifyDeployment(input: {
     decimals: decoded.decimals,
     initialSupplyBase: toCanonicalUintString(decoded.initialSupply),
     featureConfig,
-    quoteSnapshot: { ...quote, selectedFeatures },
+    quoteSnapshot: { ...quote, selectedFeatures, paidBinding, advancedConfig },
     platformFeeWei: toCanonicalUintString(tx.value),
     blockNumber: toBlockNumber(receipt.blockNumber),
   };

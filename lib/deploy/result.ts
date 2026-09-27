@@ -149,6 +149,29 @@ export function clearDeployResult(): void {
   }
 }
 
+/**
+ * Refresh-recovery display binding (B5 stale-panel fix).
+ *
+ * The stored success hint exists for ONE purpose: restoring the success UI
+ * after a same-tab refresh of the success screen. It must be DISPLAYED only
+ * while the current draft still describes the same token (name/symbol
+ * agreement — the only draft facts comparable to the hint). When the
+ * operator moves on to a NEW draft, the stale hint must not shadow it:
+ * background re-verification and the idempotent record retry still run on
+ * the raw hint, but every display decision (restored panel, verifying /
+ * unverifiable notices, recovery-banner suppression) uses the gated value.
+ */
+export function storedResultMatchesDraft(
+  stored: DeployResultV1 | null,
+  draft: { tokenName: string; tokenSymbol: string }
+): boolean {
+  if (!stored) return false;
+  return (
+    stored.tokenName === draft.tokenName.trim() &&
+    stored.tokenSymbol === draft.tokenSymbol.trim().toUpperCase()
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Receipt verification (pure — no network, no wallet, no send capability).
 // ---------------------------------------------------------------------------

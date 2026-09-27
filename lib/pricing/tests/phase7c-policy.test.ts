@@ -221,6 +221,9 @@ describe("phase 7C policy — MODULE under test: lib/pricing/server/campaign-pol
       maxWallet: "0.010",
       blacklist: "0.010",
       whitelist: "0.010",
+  trading: "0.020",
+  antiBot: "0.010",
+  autoLiquidity: "0.015",
     };
 
     it("parses human BNB strings to exact wei", () => {
@@ -277,6 +280,9 @@ describe("phase 7C policy — MODULE under test: lib/pricing/server/campaign-pol
             maxWallet: "1",
             blacklist: "0",
             whitelist: "0",
+            trading: "0",
+            antiBot: "0",
+            autoLiquidity: "0",
           }),
         Error
       );

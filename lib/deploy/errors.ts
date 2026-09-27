@@ -25,6 +25,8 @@ export type DeployErrorCode =
   | "invalid-config"
   | "duplicate-attempt"
   | "factory-unavailable"
+  | "authorization-failed"
+  | "fee-mismatch"
   | "mainnet-disabled";
 
 export class DeployFlowError extends Error {
@@ -107,6 +109,14 @@ const MESSAGES: Record<DeployErrorCode, { title: string; body: string }> = {
   "factory-unavailable": {
     title: "Deployment unavailable",
     body: "The deployment contract is not configured right now. Please try again later — no transaction was submitted.",
+  },
+  "authorization-failed": {
+    title: "Authorization could not be issued",
+    body: "The server could not sign this deployment right now. Your configuration is unchanged — request authorization again. No transaction was submitted.",
+  },
+  "fee-mismatch": {
+    title: "On-chain fee verification failed",
+    body: "The confirmed transaction's payment record does not match the authorized fee. The transaction itself is on-chain; contact support before retrying — no additional transaction will be sent automatically.",
   },
   "mainnet-disabled": {
     title: "Mainnet deployment is not yet enabled",

@@ -38,6 +38,11 @@ import { DRAFT_DEFAULTS, SUPPLY_QUICK_PRESETS, formatSupplyInput } from "../lib/
 import type { DraftConfig } from "../lib/draft";
 import { formatDiscountPercent } from "../lib/pricing/discount-percent";
 import { useSupplyField } from "./useSupplyField";
+import {
+  validateV1Form,
+  type V1FormState,
+} from "../lib/deploy/v1-config";
+import { trackCreateEvent } from "../lib/deploy/analytics";
 
 const SUMMARY_LABEL: Record<PaidFeatureId, string> = {
   burn: "Burnable",
@@ -47,6 +52,9 @@ const SUMMARY_LABEL: Record<PaidFeatureId, string> = {
   maxWallet: "Max Wallet",
   blacklist: "Blacklist",
   whitelist: "Whitelist",
+  trading: "Trading fees",
+  antiBot: "Anti-bot",
+  autoLiquidity: "Auto-liquidity",
 };
 
 const PRESET_NAME: Record<PresetId, string> = {
@@ -266,11 +274,26 @@ export function CreateBuilder({
   const supplyRef = useRef<HTMLInputElement | null>(null);
   const supplyField = useSupplyField({ value: supply, setValue: setSupply, inputRef: supplyRef });
   const [feats, setFeats] = useState<FeatureSelection>(
-    () => restoredDraft?.feats ?? DEFAULT_FEAT_SELECTION
+    // Pre-V1 drafts carry 7 flags; V1 capabilities default off at this
+    // bridge (7D-E2 extends the draft shape).
+    () => ({ ...DEFAULT_FEAT_SELECTION, ...restoredDraft?.feats })
   );
   const [xMaxbuy, setXMaxbuy] = useState(() => restoredDraft?.maxTxPercent ?? "1");
   const [xMaxwal, setXMaxwal] = useState(() => restoredDraft?.maxWalletPercent ?? "2");
+  // V1 capability state (progressive disclosure: sub-controls render only
+  // when their parent capability is enabled).
+  const [mintMode, setMintMode] = useState<"capped" | "unlimited">(
+    () => restoredDraft?.mintMode ?? "capped"
+  );
+  const [maxSupply, setMaxSupply] = useState(() => restoredDraft?.maxSupplyHuman ?? "");
+  const maxSupplyRef = useRef<HTMLInputElement | null>(null);
+  const maxSupplyField = useSupplyField({ value: maxSupply, setValue: setMaxSupply, inputRef: maxSupplyRef });
+  const [buyTax, setBuyTax] = useState(() => restoredDraft?.buyTaxBps ?? "4");
+  const [sellTax, setSellTax] = useState(() => restoredDraft?.sellTaxBps ?? "6");
+  const [mktWallet, setMktWallet] = useState(() => restoredDraft?.marketingWallet ?? "");
+  const [snipe, setSnipe] = useState(() => restoredDraft?.snipeBlocks ?? "5");
   const [inv, setInv] = useState<Inv>(CLEAR_INV);
+  const createdTracked = useRef(false);
 
   const {
     isConnected: walletConnected,
@@ -332,6 +355,32 @@ export function CreateBuilder({
 
   const result = pricingState.ok ? pricingState.result : null;
 
+  // V1 form assembly for gating (server authorization remains authoritative).
+  const v1Form: V1FormState = {
+    name, symbol: sym, decimals: dec, supplyHuman: supply,
+    burnable: feats.burn, mintable: feats.mint, mintMode, maxSupplyHuman: maxSupply,
+    pausable: feats.pause,
+    maxTxOn: feats.maxTx, maxTxPercent: xMaxbuy,
+    maxWalletOn: feats.maxWallet, maxWalletPercent: xMaxwal,
+    blacklist: feats.blacklist, whitelist: feats.whitelist,
+    trading: feats.trading, buyTaxBps: buyTax, sellTaxBps: sellTax,
+    marketingWallet: mktWallet,
+    antiBot: feats.antiBot, snipeBlocks: snipe,
+    autoLiquidity: feats.autoLiquidity,
+  };
+  const v1Check = useMemo(
+    () => validateV1Form(v1Form, walletAddress ?? ""),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [name, sym, dec, supply, feats, mintMode, maxSupply, xMaxbuy, xMaxwal, buyTax, sellTax, mktWallet, snipe, walletAddress]
+  );
+
+  // Per-feature server price (null = not offered in active pricing).
+  const feeOf = (id: PaidFeatureId): bigint | null => {
+    if (!configState.ok) return null;
+    const v = configState.value.featureFees[id];
+    return typeof v === "bigint" ? v : null;
+  };
+
   // Honest campaign estimate: exact bigint discount from the server-provided
   // campaign parameters (round down, never exceeding the subtotal). Shown
   // only when a REAL campaign is active; otherwise no discount UI at all.
@@ -354,6 +403,12 @@ export function CreateBuilder({
   }, [result, activeCampaign]);
 
   useEffect(() => {
+    if (createdTracked.current) return;
+    createdTracked.current = true;
+    trackCreateEvent({ name: "create_started" }, window.gtag);
+  }, []);
+
+  useEffect(() => {
     if (!pricingState.ok) {
       console.error(
         "Pricing calculation failed (",
@@ -373,16 +428,21 @@ export function CreateBuilder({
   }
 
   function toggle(id: PaidFeatureId) {
+    // Blacklist and Whitelist are mutually exclusive deployment modes:
+    // selecting one deselects the other (backend fails closed regardless).
+    // Capabilities not offered in active pricing cannot be enabled.
+    if (feeOf(id) === null) return;
+    const enabled = !feats[id];
     setFeats((cur) => {
-      const val = !cur[id];
       const next = { ...cur };
-      if (val) {
+      if (enabled) {
         if (id === "blacklist") next.whitelist = false;
         if (id === "whitelist") next.blacklist = false;
       }
-      next[id] = val;
+      next[id] = enabled;
       return next;
     });
+    trackCreateEvent({ name: "feature_selected", feature: id, enabled }, window.gtag);
   }
 
   function extraOk(v: string) {
@@ -407,8 +467,10 @@ export function CreateBuilder({
       v !== "" && !isNaN(parseFloat(v)) && parseFloat(v) > 0 && parseFloat(v) <= 100;
     if (feats.maxTx && !pctOk(xMaxbuy)) return false;
     if (feats.maxWallet && !pctOk(xMaxwal)) return false;
+    // Frozen V1 rules (server authorization remains authoritative).
+    if (!v1Check.ok) return false;
     return true;
-  }, [name, sym, decValid, supplyValid, feats, xMaxbuy, xMaxwal]);
+  }, [name, sym, decValid, supplyValid, feats, xMaxbuy, xMaxwal, v1Check]);
 
   const router = useRouter();
 
@@ -416,19 +478,40 @@ export function CreateBuilder({
   // navigate with normal Next.js routing. Never a new tab or window.
   const goToDeploy = useCallback(() => {
     if (!formValid || !walletConnected) return;
+    trackCreateEvent(
+      { name: "deployment_reviewed", features: selectedFeatureIds(feats) },
+      window.gtag
+    );
     saveDeployDraft({
       version: 1,
       name,
       symbol: sym,
       decimals: dec,
       supply,
-      feats: { ...feats },
+      feats: {
+        burn: feats.burn,
+        mint: feats.mint,
+        pause: feats.pause,
+        maxTx: feats.maxTx,
+        maxWallet: feats.maxWallet,
+        blacklist: feats.blacklist,
+        whitelist: feats.whitelist,
+      },
       maxTxPercent: xMaxbuy,
       maxWalletPercent: xMaxwal,
+      mintMode,
+      maxSupplyHuman: maxSupply,
+      trading: feats.trading,
+      buyTaxBps: buyTax,
+      sellTaxBps: sellTax,
+      marketingWallet: mktWallet,
+      antiBot: feats.antiBot,
+      snipeBlocks: snipe,
+      autoLiquidity: feats.autoLiquidity,
       savedAt: Date.now(),
     });
     router.push("/deploy");
-  }, [formValid, walletConnected, name, sym, dec, supply, feats, xMaxbuy, xMaxwal, router]);
+  }, [formValid, walletConnected, name, sym, dec, supply, feats, xMaxbuy, xMaxwal, mintMode, maxSupply, buyTax, sellTax, mktWallet, snipe, router]);
 
   const nameDisplay = name.trim() || "Untitled";
   const symDisplay = sym.toUpperCase() || "SYM";
@@ -627,6 +710,53 @@ export function CreateBuilder({
                   <span className="sl" aria-hidden="true"></span>
                 </label>
               </span>
+              {feats.mint && (
+                <span className="f-extra" id="xr-mintmode">
+                  <span className="xrow" role="radiogroup" aria-label="Minting mode">
+                    <label>
+                      <input
+                        type="radio"
+                        name="mintmode"
+                        value="capped"
+                        checked={mintMode === "capped"}
+                        onChange={() => setMintMode("capped")}
+                      />Capped minting (recommended)
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name="mintmode"
+                        value="unlimited"
+                        checked={mintMode === "unlimited"}
+                        onChange={() => setMintMode("unlimited")}
+                      />Unlimited minting
+                    </label>
+                  </span>
+                  <span className="xhint">
+                    {mintMode === "capped"
+                      ? "Maximum lifetime issuance: every token ever minted counts, including the initial supply. Burning never restores mint capacity."
+                      : "No lifetime cap. Anyone holding the owner key can mint any amount, forever — only choose this if you understand the trust implication."}
+                  </span>
+                  {mintMode === "capped" && (
+                    <span className="xrow">
+                      <label htmlFor="x-maxsupply">Maximum lifetime supply</label>
+                      <input
+                        id="x-maxsupply"
+                        type="text"
+                        value={maxSupply}
+                        ref={maxSupplyRef}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        placeholder="e.g. 10,000,000"
+                        onChange={(e) => maxSupplyField.handleChange(e.target.value)}
+                      />
+                    </span>
+                  )}
+                  {mintMode === "capped" && (
+                    <span className="xhint">Must be at least the initial supply. Burning tokens does NOT restore mint capacity.</span>
+                  )}
+                </span>
+              )}
             </div>
             <span className="f-group-label">Transfer Controls</span>
             <div className={"f-row" + (feats.pause ? " is-on" : "")} id="f-row-pausable">
@@ -724,6 +854,11 @@ export function CreateBuilder({
               </span>
             </div>
             <span className="f-group-label">Access Controls</span>
+            <p className="f-group-note" id="listsNote">
+              Blacklist and Whitelist are mutually exclusive deployment modes: enabling one
+              switches the other off. Blacklist blocks chosen wallets; whitelist restricts
+              all transfers to approved wallets. A liquidity pair can never be blacklisted.
+            </p>
             <div className={"f-row" + (feats.blacklist ? " is-on" : "")} id="f-row-blacklist">
               <span className="f-left">
                 <span className="f-ic" aria-hidden="true"><i className="fa-solid fa-ban"></i></span>
@@ -786,36 +921,112 @@ export function CreateBuilder({
             </div>
           </div>
 
-          <details className="adv">
+          <details className="adv" open={feats.trading || feats.antiBot || feats.autoLiquidity}>
             <summary>
-              <span className="adv-lbl"><i className="fa-solid fa-chevron-right" aria-hidden="true"></i>Advanced Features</span>
-              <span className="soon">Coming later</span>
+              <span className="adv-lbl"><i className="fa-solid fa-chevron-right" aria-hidden="true"></i>Trading, Launch &amp; Liquidity</span>
+              <span className="soon">Advanced</span>
             </summary>
             <div className="adv-list">
-              <div className="adv-row">
-                <span className="a-ic" aria-hidden="true"><i className="fa-solid fa-percent"></i></span>
-                <span className="a-txt"><b>Buy / Sell Tax</b><span>Set tax rates and a treasury wallet for every transfer.</span></span>
-                <span className="soon">Coming later</span>
+              <div className={"f-row" + (feats.trading ? " is-on" : "")} id="f-row-trading">
+                <span className="f-left">
+                  <span className="f-ic" aria-hidden="true"><i className="fa-solid fa-percent"></i></span>
+                  <span className="f-txt">
+                    <b>Trading fees</b>
+                    <span className="f-desc">One priced capability: buy/sell tax with marketing wallet and fee-exemption management. Wallet-to-wallet transfers stay untaxed.</span>
+                  </span>
+                </span>
+                <span className="f-right">
+                  {feeOf("trading") !== null ? (
+                    <span className="f-price"><em>Add-on</em>+{formatWeiBnbDisplay(feeOf("trading") as bigint)} BNB</span>
+                  ) : (
+                    <span className="f-price"><em>Unavailable</em></span>
+                  )}
+                  <label className="switch">
+                    <input type="checkbox" data-feat="trading" aria-label="Trading fees" checked={feats.trading} disabled={feeOf("trading") === null} onChange={() => toggle("trading")} />
+                    <span className="sl" aria-hidden="true"></span>
+                  </label>
+                </span>
+                {feeOf("trading") === null && (
+                  <span className="xhint">Not offered in current pricing — deployment with trading is unavailable right now.</span>
+                )}
+                {feats.trading && (
+                  <span className="f-extra" id="xr-trading">
+                    <span className="xrow">
+                      <label htmlFor="x-buytax">Buy tax (bps, ≤1000)</label>
+                      <input id="x-buytax" type="number" value={buyTax} min={0} max={1000} step={1} inputMode="numeric" onChange={(e) => setBuyTax(e.target.value.replace(/\D/g, "").slice(0, 4))} />
+                    </span>
+                    <span className="xrow">
+                      <label htmlFor="x-selltax">Sell tax (bps, ≤1000)</label>
+                      <input id="x-selltax" type="number" value={sellTax} min={0} max={1000} step={1} inputMode="numeric" onChange={(e) => setSellTax(e.target.value.replace(/\D/g, "").slice(0, 4))} />
+                    </span>
+                    <span className="xhint">100 bps = 1%. Maximum 1000 bps (10%) per side. Taxes apply to buys/sells through liquidity pairs only.</span>
+                    <span className="xrow">
+                      <label htmlFor="x-mktwallet">Marketing wallet</label>
+                      <input id="x-mktwallet" type="text" value={mktWallet} spellCheck={false} autoComplete="off" placeholder="0x…" onChange={(e) => setMktWallet(e.target.value.trim())} />
+                    </span>
+                    <span className="xhint">Your wallet receives the marketing share. No platform wallet is ever used. Fee exemptions are managed later in Token Manager.</span>
+                  </span>
+                )}
               </div>
-              <div className="adv-row">
-                <span className="a-ic" aria-hidden="true"><i className="fa-solid fa-bullseye"></i></span>
-                <span className="a-txt"><b>Marketing Wallet</b><span>Route a share of every trade to a project wallet.</span></span>
-                <span className="soon">Coming later</span>
+              <div className={"f-row" + (feats.antiBot ? " is-on" : "")} id="f-row-antibot">
+                <span className="f-left">
+                  <span className="f-ic" aria-hidden="true"><i className="fa-solid fa-robot"></i></span>
+                  <span className="f-txt">
+                    <b>Anti-bot launch protection</b>
+                    <span className="f-desc">Trading starts disabled; you enable it after launch for a bounded window. Cannot be restarted or extended. Sells are never blocked.</span>
+                  </span>
+                </span>
+                <span className="f-right">
+                  {feeOf("antiBot") !== null ? (
+                    <span className="f-price"><em>Add-on</em>+{formatWeiBnbDisplay(feeOf("antiBot") as bigint)} BNB</span>
+                  ) : (
+                    <span className="f-price"><em>Unavailable</em></span>
+                  )}
+                  <label className="switch">
+                    <input type="checkbox" data-feat="antibot" aria-label="Anti-bot launch protection" checked={feats.antiBot} disabled={feeOf("antiBot") === null} onChange={() => toggle("antiBot")} />
+                    <span className="sl" aria-hidden="true"></span>
+                  </label>
+                </span>
+                {feeOf("antiBot") === null && (
+                  <span className="xhint">Not offered in current pricing — deployment with anti-bot is unavailable right now.</span>
+                )}
+                {feats.antiBot && (
+                  <span className="f-extra" id="xr-antibot">
+                    <span className="xrow">
+                      <label htmlFor="x-snipe">Snipe window (blocks, ≤50)</label>
+                      <input id="x-snipe" type="number" value={snipe} min={0} max={50} step={1} inputMode="numeric" onChange={(e) => setSnipe(e.target.value.replace(/\D/g, "").slice(0, 2))} />
+                    </span>
+                    <span className="xhint">One transfer per block per wallet during the window. This slows snipers — it cannot guarantee bot prevention.</span>
+                  </span>
+                )}
               </div>
-              <div className="adv-row">
-                <span className="a-ic" aria-hidden="true"><i className="fa-solid fa-circle-minus"></i></span>
-                <span className="a-txt"><b>Fee Exemption</b><span>Exempt contract, liquidity or selected wallets from fees.</span></span>
-                <span className="soon">Coming later</span>
-              </div>
-              <div className="adv-row">
-                <span className="a-ic" aria-hidden="true"><i className="fa-solid fa-robot"></i></span>
-                <span className="a-txt"><b>Anti-bot</b><span>Block automated traders around launch.</span></span>
-                <span className="soon">Coming later</span>
-              </div>
-              <div className="adv-row">
-                <span className="a-ic" aria-hidden="true"><i className="fa-solid fa-water"></i></span>
-                <span className="a-txt"><b>Auto Liquidity</b><span>Lock a flow of liquidity into a DEX pool automatically.</span></span>
-                <span className="soon">Coming later</span>
+              <div className={"f-row" + (feats.autoLiquidity ? " is-on" : "")} id="f-row-autoliq">
+                <span className="f-left">
+                  <span className="f-ic" aria-hidden="true"><i className="fa-solid fa-water"></i></span>
+                  <span className="f-txt">
+                    <b>Auto-liquidity</b>
+                    <span className="f-desc">PancakeSwap V2 swapBack converts collected tax into locked liquidity. LP goes permanently to the burn address — the platform never receives LP.</span>
+                  </span>
+                </span>
+                <span className="f-right">
+                  {feeOf("autoLiquidity") !== null ? (
+                    <span className="f-price"><em>Add-on</em>+{formatWeiBnbDisplay(feeOf("autoLiquidity") as bigint)} BNB</span>
+                  ) : (
+                    <span className="f-price"><em>Unavailable</em></span>
+                  )}
+                  <label className="switch">
+                    <input type="checkbox" data-feat="autoliq" aria-label="Auto-liquidity" checked={feats.autoLiquidity} disabled={feeOf("autoLiquidity") === null} onChange={() => toggle("autoLiquidity")} />
+                    <span className="sl" aria-hidden="true"></span>
+                  </label>
+                </span>
+                {feeOf("autoLiquidity") === null && (
+                  <span className="xhint">Not offered in current pricing — deployment with auto-liquidity is unavailable right now.</span>
+                )}
+                {feats.autoLiquidity && (
+                  <span className="f-extra" id="xr-autoliq">
+                    <span className="xhint">Requires a non-zero buy or sell tax. Threshold and shares are set automatically within contract bounds. SwapBack can later be toggled in Token Manager for recovery; LP is never recoverable.</span>
+                  </span>
+                )}
               </div>
             </div>
           </details>
@@ -857,6 +1068,14 @@ export function CreateBuilder({
             <div className="sum-row"><span>Token</span><b id="sumToken">{nameDisplay} · {symDisplay}</b></div>
             <div className="sum-row"><span>Supply</span><b id="sumSupply">{supplyDisplay}</b></div>
             <div className="sum-row"><span>Decimals</span><b id="sumDec">{decDisplay}</b></div>
+            {feats.mint && (
+              <div className="sum-row">
+                <span>Max lifetime supply</span>
+                <b id="sumMaxSupply">
+                  {mintMode === "unlimited" ? "Unlimited" : (maxSupply.replace(/\D/g, "") ? Number(maxSupply.replace(/\D/g, "")).toLocaleString("en-US") : "—")}
+                </b>
+              </div>
+            )}
           </div>
           <hr className="sum-sep" />
           <div className="sum-label">Selected features</div>

@@ -46,7 +46,8 @@ export type PlatformFeeResultDto = {
 export type PricingConfigDto = {
   version: string;
   baseFeeWei: string;
-  featureFees: Readonly<Record<PaidFeatureId, string>>;
+  /** Absent key = capability not offered in this pricing version. */
+  featureFees: Readonly<Partial<Record<PaidFeatureId, string>>>;
   includedFeatures: ReadonlyArray<IncludedFeatureId>;
   comingSoonFeatures: ReadonlyArray<ComingSoonFeatureId>;
 };
@@ -79,15 +80,13 @@ export function toPlatformFeeDto(result: PricingResult): PlatformFeeResultDto {
 }
 
 export function toPricingConfigDto(config: PricingConfig): PricingConfigDto {
-  const featureFees: Record<PaidFeatureId, string> = {
-    burn: weiToString(config.featureFees.burn as bigint),
-    mint: weiToString(config.featureFees.mint as bigint),
-    pause: weiToString(config.featureFees.pause as bigint),
-    maxTx: weiToString(config.featureFees.maxTx as bigint),
-    maxWallet: weiToString(config.featureFees.maxWallet as bigint),
-    blacklist: weiToString(config.featureFees.blacklist as bigint),
-    whitelist: weiToString(config.featureFees.whitelist as bigint),
-  };
+  const featureFees: Partial<Record<PaidFeatureId, string>> = {};
+  for (const id of PAID_FEATURES) {
+    const value = config.featureFees[id];
+    if (value !== undefined) {
+      featureFees[id] = weiToString(value);
+    }
+  }
   return {
     version: config.version,
     baseFeeWei: weiToString(config.baseFeeWei),
@@ -110,8 +109,9 @@ export function fromPricingConfigDto(dto: PricingConfigDto): PricingConfig {
   const featureFees: Partial<Record<PaidFeatureId, bigint>> = {};
   for (const id of PAID_FEATURES) {
     const raw = dto.featureFees[id];
+    if (raw === undefined) continue; // not offered in this version
     if (typeof raw !== "string") {
-      throw new PricingError("invalid-config", `missing fee for feature ${id}`);
+      throw new PricingError("invalid-config", `invalid fee for feature ${id}`);
     }
     featureFees[id] = parseWeiStringToBigint(raw);
   }

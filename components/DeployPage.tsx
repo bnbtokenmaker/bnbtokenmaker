@@ -27,6 +27,7 @@ import {
   loadDeployDraft,
   type DeployDraftV1,
 } from "../lib/deploy/draft-transfer";
+import { DEFAULT_FEAT_SELECTION } from "../lib/pricing/presets";
 
 function subscribeDraft(): () => void {
   // The draft is written only during navigation (same-tab push to /deploy),
@@ -98,9 +99,21 @@ export function DeployPage() {
             tokenSymbol={draft.symbol}
             decimals={draft.decimals}
             supply={draft.supply}
-            feats={draft.feats}
+            feats={{
+              ...DEFAULT_FEAT_SELECTION,
+              ...draft.feats,
+              trading: draft.trading ?? false,
+              antiBot: draft.antiBot ?? false,
+              autoLiquidity: draft.autoLiquidity ?? false,
+            }}
             maxTxPercent={draft.maxTxPercent}
             maxWalletPercent={draft.maxWalletPercent}
+            mintMode={draft.mintMode ?? "capped"}
+            maxSupplyHuman={draft.maxSupplyHuman ?? ""}
+            buyTaxBps={draft.buyTaxBps ?? "0"}
+            sellTaxBps={draft.sellTaxBps ?? "0"}
+            marketingWallet={draft.marketingWallet ?? ""}
+            snipeBlocks={draft.snipeBlocks ?? "0"}
           />
         ) : (
           <div className="deploy-card" role="status" aria-live="polite">

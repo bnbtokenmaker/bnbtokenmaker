@@ -9,7 +9,7 @@
 import { encodeFunctionData, type Abi } from "viem";
 
 import { PHASE6B_CHAIN_ID, PHASE6B_EXPLORER } from "./phase6b";
-import { factoryAbi, factoryAddress, parseTokenCreatedLog } from "../token/factory";
+import { factoryAbi, factoryAddress, parseDeploymentPaidLog, parseTokenCreatedLog } from "../token/factory";
 import type { ValidatedTokenConfig } from "../token/config";
 import { toContractArgs } from "../token/config";
 import { DeployFlowError } from "./errors";
@@ -33,6 +33,12 @@ export type PreparedDeployment = {
  * Throws factory-unavailable when no factory is configured for the chain,
  * and mainnet-disabled for ANY chain other than 97 — so a testnet factory
  * address can never be paired with chain 56 (or anything else).
+ *
+ * LEGACY (7D-E4): superseded by the V1 authorize flow
+ * (POST /api/deployments/authorize + packageToCalldata) for all new UI.
+ * Retained with unit tests for historical compatibility reference — do NOT
+ * wire it to V1 configurations (7-field config, zero value, legacy factory
+ * are mutually incompatible with V1).
  */
 export function prepareDeploymentTx(
   chainId: number,
@@ -86,6 +92,28 @@ export function findDeployedTokenAddress(
       data: log.data as `0x${string}`,
     });
     if (parsed) return parsed.token;
+  }
+  return null;
+}
+
+/**
+ * Extract the V1 DeploymentPaid attestation from a receipt (fee audit).
+ * Returns null for legacy fee-free receipts (no such event) — callers
+ * treat that as the informational path, never as failure.
+ */
+export function findDeploymentPaid(
+  logs: readonly ReceiptLogLike[] | undefined | null
+): ReturnType<typeof parseDeploymentPaidLog> {
+  if (!logs) return null;
+  for (const log of logs) {
+    if (!log || !Array.isArray(log.topics) || typeof log.data !== "string") {
+      continue;
+    }
+    const parsed = parseDeploymentPaidLog({
+      topics: log.topics,
+      data: log.data as `0x${string}`,
+    });
+    if (parsed) return parsed;
   }
   return null;
 }

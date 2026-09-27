@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { validateTokenConfig } from "../../token/config";
+import { EMPTY_FEATURES, validateTokenConfig } from "../../token/config";
 import {
   DEPLOY_DRAFT_KEY,
   DEPLOY_DRAFT_VERSION,
@@ -45,6 +45,42 @@ describe("deploy draft transfer — shape validation", () => {
     assert.equal(parsed.symbol, "MAKER");
   });
 
+  it("round-trips V1 extras; pre-V1 drafts parse without them", () => {
+    const full = {
+      ...goodDraft(),
+      mintMode: "unlimited",
+      maxSupplyHuman: "10,000,000",
+      trading: true,
+      buyTaxBps: "400",
+      sellTaxBps: "600",
+      marketingWallet: "0x1111111111111111111111111111111111111111",
+      antiBot: true,
+      snipeBlocks: "5",
+      autoLiquidity: true,
+    };
+    const parsed = parseDeployDraft(JSON.parse(JSON.stringify(full)));
+    assert.ok(parsed);
+    assert.equal(parsed.mintMode, "unlimited");
+    assert.equal(parsed.maxSupplyHuman, "10,000,000");
+    assert.equal(parsed.trading, true);
+    assert.equal(parsed.buyTaxBps, "400");
+    assert.equal(parsed.marketingWallet, "0x1111111111111111111111111111111111111111");
+    assert.equal(parsed.antiBot, true);
+    assert.equal(parsed.snipeBlocks, "5");
+    assert.equal(parsed.autoLiquidity, true);
+    // Pre-V1 shape: V1 keys simply absent.
+    const legacy = parseDeployDraft(goodDraft());
+    assert.ok(legacy);
+    assert.equal(legacy.mintMode, undefined);
+    assert.equal(legacy.trading, undefined);
+  });
+
+  it("rejects malformed V1 extras", () => {
+    assert.equal(parseDeployDraft({ ...goodDraft(), mintMode: "forever" }), null);
+    assert.equal(parseDeployDraft({ ...goodDraft(), antiBot: "yes" }), null);
+    assert.equal(parseDeployDraft({ ...goodDraft(), buyTaxBps: 400 }), null);
+  });
+
   it("fails closed on absent/malformed/stale drafts", () => {
     assert.equal(parseDeployDraft(null), null);
     assert.equal(parseDeployDraft(undefined), null);
@@ -80,7 +116,7 @@ describe("deploy draft transfer — shape validation", () => {
       decimals: parsed.decimals,
       supplyHuman: parsed.supply,
       owner: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-      features: { ...parsed.feats },
+      features: { ...EMPTY_FEATURES, ...parsed.feats },
       maxTxPercent: parsed.maxTxPercent,
       maxWalletPercent: parsed.maxWalletPercent,
     });
@@ -93,7 +129,9 @@ describe("deploy draft transfer — shape validation", () => {
         decimals: "99",
         supplyHuman: "0",
         owner: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-        features: { ...parsed.feats },
+        // Pre-V1 drafts carry the 7 paid-feature flags; V1 capabilities
+        // default off when bridging to the canonical TokenFeatureFlags.
+        features: { ...EMPTY_FEATURES, ...parsed.feats },
         maxTxPercent: parsed.maxTxPercent,
         maxWalletPercent: parsed.maxWalletPercent,
       })

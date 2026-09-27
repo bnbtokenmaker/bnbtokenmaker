@@ -47,6 +47,12 @@ const KNOWN_FEATURES: ReadonlySet<string> = new Set([
   "maxWallet",
   "blacklist",
   "whitelist",
+  // V1 capabilities (7D-E1): the server quotes all ten paid features, so the
+  // review/gas-preview path must accept them — otherwise every full-V1
+  // selection fails closed client-side as "quote-stale".
+  "trading",
+  "antiBot",
+  "autoLiquidity",
 ]);
 
 function isWeiString(value: unknown): value is string {

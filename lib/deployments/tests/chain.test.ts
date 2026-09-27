@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import { PHASE6B_RPC_DEFAULT } from "../../deploy/phase6b";
 import {
+  getExpectedFactory,
   resetServerChainReaderForTests,
   ServerRpcUnavailableError,
   serverRpcUrl,
@@ -47,6 +48,54 @@ describe("deployments — server RPC resolution (fail-closed in production)", ()
       withEnv("NODE_ENV", "production", () => {
         assert.throws(() => serverRpcUrl(), ServerRpcUnavailableError);
       });
+    });
+  });
+});
+
+describe("deployments — expected factory resolution (V1 trust boundary)", () => {
+  const V1 = "0xb0fade4dae1b17b156d21dfe053ee69e0478b80d";
+  const LEGACY = "0x1111111111111111111111111111111111111111";
+
+  function withFactories(
+    v1: string | undefined,
+    legacy: string | undefined,
+    fn: () => void
+  ): void {
+    withEnv("NEXT_PUBLIC_V1_FACTORY_ADDRESS", v1, () => {
+      withEnv("NEXT_PUBLIC_TESTNET_FACTORY_ADDRESS", legacy, fn);
+    });
+  }
+
+  it("resolves the canonical V1 factory when configured", () => {
+    withFactories(V1, undefined, () => {
+      assert.equal(getExpectedFactory(), V1);
+    });
+  });
+
+  it("prefers V1 over a stale legacy factory (never shadowed)", () => {
+    withFactories(V1, LEGACY, () => {
+      assert.equal(getExpectedFactory(), V1);
+    });
+  });
+
+  it("falls back to the legacy factory only when V1 is unset", () => {
+    withFactories(undefined, LEGACY, () => {
+      assert.equal(getExpectedFactory(), LEGACY);
+    });
+  });
+
+  it("returns null when no factory is configured (fail closed)", () => {
+    withFactories(undefined, undefined, () => {
+      assert.equal(getExpectedFactory(), null);
+    });
+  });
+
+  it("ignores malformed factory values", () => {
+    withFactories("not-an-address", "also-bad", () => {
+      assert.equal(getExpectedFactory(), null);
+    });
+    withFactories("not-an-address", LEGACY, () => {
+      assert.equal(getExpectedFactory(), LEGACY);
     });
   });
 });

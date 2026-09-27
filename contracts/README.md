@@ -1,4 +1,100 @@
-# Phase 6B contracts — BSC Testnet deployment engine
+# Phase 7D-B2 contracts — production V1 (NOT YET DEPLOYED)
+
+> This phase is implementation + testing ONLY. No testnet/mainnet deployment,
+> no BNB spent, no pricing/DB/frontend/backend wiring (those are later phases).
+
+## Architecture (frozen V1)
+
+Monolithic token + external immutable stateless SwapLib + single EIP-712
+factory. No proxies, no upgradeability, no hidden admin, no hidden platform
+tax, no backdoors.
+
+- `contracts/SwapLib.sol` — stateless library: full config validation
+  (`validateBasicConfig` / `validateAdvancedConfig`), PancakeSwap V2
+  swap/liquidity execution (`executeSwap`, `pairHasLiquidity`). Zero storage,
+  no owner/admin, no selfdestruct, no delegatecall of its own, no platform
+  role. Marketing BNB can only flow to the explicit wallet parameter; LP is
+  ALWAYS sent to the burn address.
+- `contracts/BNBTokenMakerToken.sol` — the generated token. Frozen V1 set:
+  ERC-20/BEP-20 base, burn, mint, maximum LIFETIME supply (cumulative
+  issuance incl. initial supply, excl. burns; `maxSupply == 0` is an explicit
+  immutable unlimited choice), pause, blacklist, whitelist, maxTx, maxWallet,
+  buy/sell tax (<=10% each, AMM-pair sides only), marketing wallet, fee
+  exemption, bounded anti-bot launch, auto-liquidity with recovery-only
+  swapBack toggle, pair registry (pairs can never be blacklisted or
+  tax-exempted), ownership transfer/renounce, on-chain provenance
+  (`GENERATOR`) + immutable factory lineage (`FACTORY`).
+  NO ERC-2612 Permit, NO Permit2 (excluded in 7D-B1.1: even permit-only
+  pushed the factory past EIP-170).
+- `contracts/TokenFactory.sol` — EIP-712 quoted deployment: server-signed
+  `DeployQuote` (config hash, exact fee, chainId, factory, nonce, expiry,
+  pricing version), immutable `MAX_FEE_WEI` cap, rotatable signer,
+  immutable fee recipient, nonce/replay registry, `owner == msg.sender`
+  structural guarantee, checked fee forwarding. Factory ownership covers
+  signer rotation + ownership lifecycle ONLY — zero authority over tokens.
+- `contracts/mocks/MockPancake.sol` — TEST ONLY helpers (mock router etched
+  at the canonical address via `hardhat_setCode`, mock pair, atomic
+  BatchBuyer). Never deployed by the factory or app.
+
+## Linked-library deployment ceremony (REQUIRED)
+
+SwapLib must be deployed FIRST standalone; its address is then LINKED into
+the token AND factory bytecode at compile time (the factory embeds token
+creation code, placeholders included); then the factory is deployed with the
+linked bytecode. Direct Solidity calls (`SwapLib.f(...)`) compile to
+DELEGATECALL, so execution always runs in the calling token's context.
+The library can never be replaced for an existing token.
+
+## Toolchain (pinned, reproducible)
+
+- Solidity `0.8.28` (checked arithmetic, custom errors)
+- OpenZeppelin Contracts `5.4.0` (`ERC20`, `Ownable`, `EIP712`, `ECDSA` — factory only)
+- Hardhat `2.26.3` + `@nomicfoundation/hardhat-viem` `2.1.x`
+- EVM target `paris` (safe for BSC mainnet/testnet)
+
+## Commands
+
+```sh
+npm run contracts:compile    # compile (sources -> contracts/.artifacts, gitignored)
+npm run contracts:test       # 107 in-process tests + 1 env-gated fork test (skipped)
+node scripts/measure-contracts.mjs  # reproducible size gate (exit 1 on breach)
+```
+
+## Production sizes (measured, same toolchain)
+
+- SwapLib: deployed 4,300 B / init 4,357 B (17.5% of EIP-170)
+- BNBTokenMakerToken: deployed 10,862 B / init 16,810 B (44.2% of EIP-170)
+- TokenFactory: deployed 22,843 B / init 24,222 B (92.9% of EIP-170,
+  +1,733 B EIP headroom, **+157 B to the 23,000 B gate**)
+
+Gate `<23,000 B`: PASS. Preferred target `<=22,500 B`: missed by 343 B —
+full provenance retained (complete removal saves only ~192 B and is
+disallowed merely for bytes; remaining honest levers cut debuggability).
+Any V1.x change must re-run the measurement.
+
+## Test battery (contracts/test, all in-process, no network, no secrets)
+
+A. regression (base/features/combinations, incl. updated maxWallet
+   exempt-leg semantics) · B. supply/lifetime cap · C. tax · D. pair
+   controls · E. anti-bot · F. auto-liquidity (mock router) · G. platform
+   isolation · H. EIP-712 quotes · I. ABI privilege allowlist · fork
+   integration: env-gated (`BSC_FORK_URL`), skipped — public BSC endpoints
+   return `missing trie node` for fork state (tried twice, not hammered);
+   needs a provisioned archive endpoint in a later phase.
+
+## Safety rules (enforced by tests, not just docs)
+
+- Factory requires `owner == msg.sender` + `msg.value == quote.feeWei` +
+  valid rotatable-signer signature over the EXACT config hash; quotes carry
+  nonce registry, expiry, chainId, factory address and fee cap.
+- Pair cannot be blacklisted or fee-exempted; LP only to burn; swap failure
+  never reverts holder transfers; pause precedes swap behavior.
+- `receive()` accepts BNB only from the Pancake router.
+- ABI allowlist test fails on any new privileged mutator.
+
+---
+
+# Phase 6B contracts — BSC Testnet deployment engine (HISTORICAL)
 
 Single-implementation BEP-20 + fee-free factory. No proxies, no upgradeability,
 no hidden admin, no taxes, no fees. Full feature semantics are documented in

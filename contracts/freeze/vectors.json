@@ -1,0 +1,124 @@
+{
+  "schema": "bnbtokenmaker-quote-vectors/1",
+  "note": "Deterministic fixtures. Sample addresses/factory/signer are TEST ONLY and never used on any chain.",
+  "domain": {
+    "name": "BNBTokenMaker",
+    "version": "1",
+    "chainId": "bigint:56",
+    "verifyingContract": "0x1111111111111111111111111111111111111111"
+  },
+  "types": {
+    "DeployQuote": [
+      {
+        "name": "configHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "feeWei",
+        "type": "uint256"
+      },
+      {
+        "name": "chainId",
+        "type": "uint256"
+      },
+      {
+        "name": "factory",
+        "type": "address"
+      },
+      {
+        "name": "nonce",
+        "type": "bytes32"
+      },
+      {
+        "name": "expiry",
+        "type": "uint256"
+      },
+      {
+        "name": "pricingVersion",
+        "type": "bytes32"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "label": "base-only",
+      "token": {
+        "name": "Vector Token",
+        "symbol": "VCTR",
+        "decimals": 18,
+        "initialSupply": "bigint:1000000000000000000000000",
+        "owner": "0x2222222222222222222222222222222222222222",
+        "burnable": false,
+        "mintable": false,
+        "pausable": false,
+        "maxTxAmount": "bigint:0",
+        "maxWalletAmount": "bigint:0",
+        "blacklistEnabled": false,
+        "whitelistEnabled": false,
+        "buyTaxBps": 0,
+        "sellTaxBps": 0,
+        "marketingWallet": "0x0000000000000000000000000000000000000000",
+        "marketingShareBps": 0,
+        "liquidityShareBps": 0,
+        "autoLiquidityEnabled": false,
+        "swapThreshold": "bigint:0",
+        "antiBotEnabled": false,
+        "snipeBlocks": "bigint:0",
+        "maxSupply": "bigint:0"
+      },
+      "quote": {
+        "configHash": "0x5deeb638b868dcffae85aa41421dd1ac5608ace591c970e84586b7436738af40",
+        "feeWei": "bigint:50000000000000000",
+        "chainId": "bigint:56",
+        "factory": "0x1111111111111111111111111111111111111111",
+        "nonce": "0x3863be28eb57c9f47977bf3efbc1b8e112a0df4181a1040a02bd9d04153bb5eb",
+        "expiry": "bigint:1893456000",
+        "pricingVersion": "0x16ba86a49e13d8899da1d1e6b9bdbdabb501c63134f796e42a1f00dac0c48784"
+      },
+      "configHash": "0x5deeb638b868dcffae85aa41421dd1ac5608ace591c970e84586b7436738af40",
+      "digest": "0x97f1e608646a43832540fa84226e257f6377df0d61207c04aa206034ac3bc30a",
+      "signature": "0x619db361d390f78a0879e2f8da4e912e4139117f50c0d681da05ddd1f5c5fd9e3d7bd994f5b660fd498360334705cda719f658744a24898be5bfc76b1fad14091c",
+      "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+    },
+    {
+      "label": "full-monty",
+      "token": {
+        "name": "Vector Token",
+        "symbol": "VCTR",
+        "decimals": 18,
+        "initialSupply": "bigint:1000000000000000000000000",
+        "owner": "0x2222222222222222222222222222222222222222",
+        "burnable": true,
+        "mintable": true,
+        "pausable": true,
+        "maxTxAmount": "bigint:10000000000000000000000",
+        "maxWalletAmount": "bigint:20000000000000000000000",
+        "blacklistEnabled": true,
+        "whitelistEnabled": true,
+        "buyTaxBps": 400,
+        "sellTaxBps": 600,
+        "marketingWallet": "0x3333333333333333333333333333333333333333",
+        "marketingShareBps": 7000,
+        "liquidityShareBps": 3000,
+        "autoLiquidityEnabled": true,
+        "swapThreshold": "bigint:1000000000000000000000",
+        "antiBotEnabled": true,
+        "snipeBlocks": "bigint:10",
+        "maxSupply": "bigint:10000000000000000000000000"
+      },
+      "quote": {
+        "configHash": "0xaa760b8f8b092007a62904ca47cbeb8542240104d04e2e09d527ee9839370e87",
+        "feeWei": "bigint:350000000000000000",
+        "chainId": "bigint:56",
+        "factory": "0x1111111111111111111111111111111111111111",
+        "nonce": "0x4d87563f091859c9a5c18af76f1e415989f2aaed5cc16657a3e3aa5c966b1f9b",
+        "expiry": "bigint:1893456000",
+        "pricingVersion": "0x16ba86a49e13d8899da1d1e6b9bdbdabb501c63134f796e42a1f00dac0c48784"
+      },
+      "configHash": "0xaa760b8f8b092007a62904ca47cbeb8542240104d04e2e09d527ee9839370e87",
+      "digest": "0x0a62eed7ec52df3c4d1f2bdd3ebee8ab0bae4f10272f8b14737aea75f557583c",
+      "signature": "0x6ab3db8edb685df088e86e638dbffde0a8d8d92e78105e5074f68a1b6a51537067c849359055d9ea16bcd8656ff7a364092c3911d891750b1acb76b18ff92fe31c",
+      "signer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+    }
+  ]
+}

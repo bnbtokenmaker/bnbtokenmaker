@@ -43,6 +43,9 @@ const FEATURE_LABELS: Record<string, string> = {
   maxWallet: "Max wallet",
   blacklist: "Blacklist",
   whitelist: "Whitelist",
+  trading: "Trading fees",
+  antiBot: "Anti-bot",
+  autoLiquidity: "Auto-liquidity",
 };
 
 /** Normalize a stored feature_config value for display. Never throws. */

@@ -30,6 +30,9 @@ function baseInput(overrides: Partial<TokenConfigInput> = {}): TokenConfigInput 
       maxWallet: false,
       blacklist: false,
       whitelist: false,
+      trading: false,
+      antiBot: false,
+      autoLiquidity: false,
     },
     ...overrides,
   };
@@ -112,6 +115,7 @@ describe("token config validation", () => {
           burn: false, mint: false, pause: false,
           maxTx: true, maxWallet: true,
           blacklist: false, whitelist: false,
+          trading: false, antiBot: false, autoLiquidity: false,
         },
         maxTxPercent: "1",
         maxWalletPercent: "2",
@@ -122,7 +126,7 @@ describe("token config validation", () => {
   });
 
   it("rejects missing/out-of-range percents and wallet < tx", () => {
-    const on = { burn: false, mint: false, pause: false, maxTx: true, maxWallet: false, blacklist: false, whitelist: false };
+    const on = { burn: false, mint: false, pause: false, maxTx: true, maxWallet: false, blacklist: false, whitelist: false, trading: false, antiBot: false, autoLiquidity: false };
     expectCode(() => validateTokenConfig(baseInput({ features: on })), "invalid-max-tx");
     expectCode(() => validateTokenConfig(baseInput({ features: on, maxTxPercent: "0" })), "invalid-max-tx");
     expectCode(() => validateTokenConfig(baseInput({ features: on, maxTxPercent: "101" })), "invalid-max-tx");
@@ -166,10 +170,12 @@ describe("token config validation", () => {
     assert.deepEqual(flags, {
       burn: true, mint: true, pause: false, maxTx: true,
       maxWallet: false, blacklist: true, whitelist: false,
+      trading: false, antiBot: false, autoLiquidity: false,
     });
     assert.deepEqual(decodeFeatureBitmap(0n), {
       burn: false, mint: false, pause: false, maxTx: false,
       maxWallet: false, blacklist: false, whitelist: false,
+      trading: false, antiBot: false, autoLiquidity: false,
     });
   });
 });

@@ -56,7 +56,7 @@ import {
   deriveCampaignStatus,
   pricingFeeMapToConfig,
   type ParsedCampaignPatch,
-  type PricingFeeMap,
+  type PublishedPricingFees,
 } from "./campaign-policy";
 import { devPricingConfig } from "./dev-values";
 
@@ -191,6 +191,9 @@ export type PublishStatementInput = {
   maxWalletFeeWei: string;
   blacklistFeeWei: string;
   whitelistFeeWei: string;
+  tradingFeeWei: string;
+  antibotFeeWei: string;
+  autoliquidityFeeWei: string;
   adminId: number | null;
   /** Client-known version string ('v' + reserved sequence value). */
   version: string;
@@ -215,13 +218,16 @@ export function buildPublishStatements(
     tx`INSERT INTO pricing_versions (
         version, base_fee_wei, burn_fee_wei, mint_fee_wei, pause_fee_wei,
         maxtx_fee_wei, maxwallet_fee_wei, blacklist_fee_wei,
-        whitelist_fee_wei, created_by_admin_id
+        whitelist_fee_wei, trading_fee_wei, antibot_fee_wei,
+        autoliquidity_fee_wei, created_by_admin_id
       )
       VALUES (
         ${input.version}, ${input.baseFeeWei}, ${input.burnFeeWei},
         ${input.mintFeeWei}, ${input.pauseFeeWei},
         ${input.maxTxFeeWei}, ${input.maxWalletFeeWei},
         ${input.blacklistFeeWei}, ${input.whitelistFeeWei},
+        ${input.tradingFeeWei}, ${input.antibotFeeWei},
+        ${input.autoliquidityFeeWei},
         ${input.adminId}
       )`,
     tx`UPDATE pricing_versions SET status = 'inactive'
@@ -241,7 +247,7 @@ export function buildPublishStatements(
 }
 
 export type PublishVersionInput = {
-  fees: PricingFeeMap;
+  fees: PublishedPricingFees;
   adminId: number | null;
 };
 
@@ -285,6 +291,10 @@ function clampLimit(limit: number | undefined, max: number): number {
 /** Converts a pricing_versions row into the domain PricingConfig. */
 export function rowToPricingConfig(row: PricingVersionRow): PricingConfig {
   try {
+    // NULLABLE V1 capability columns read as null (= not offered); the
+    // seven Phase 7C columns are NOT NULL and always parse.
+    const nullable = (value: string | null): bigint | null =>
+      value === null ? null : parseWeiStringToBigint(value);
     const config = pricingFeeMapToConfig(
       {
         base: parseWeiStringToBigint(row.baseFeeWei),
@@ -295,6 +305,9 @@ export function rowToPricingConfig(row: PricingVersionRow): PricingConfig {
         maxWallet: parseWeiStringToBigint(row.maxWalletFeeWei),
         blacklist: parseWeiStringToBigint(row.blacklistFeeWei),
         whitelist: parseWeiStringToBigint(row.whitelistFeeWei),
+        trading: nullable(row.tradingFeeWei),
+        antiBot: nullable(row.antibotFeeWei),
+        autoLiquidity: nullable(row.autoliquidityFeeWei),
       },
       row.version
     );
@@ -414,6 +427,9 @@ export class PgPricingStore implements PricingStore {
           maxWallet: weiOf(input.fees.maxWallet),
           blacklist: weiOf(input.fees.blacklist),
           whitelist: weiOf(input.fees.whitelist),
+          trading: weiOf(input.fees.trading),
+          antiBot: weiOf(input.fees.antiBot),
+          autoLiquidity: weiOf(input.fees.autoLiquidity),
         },
       });
       // Reserve the version identifier up front. The sequence is atomic, so
@@ -448,6 +464,9 @@ export class PgPricingStore implements PricingStore {
           maxWalletFeeWei: weiOf(input.fees.maxWallet),
           blacklistFeeWei: weiOf(input.fees.blacklist),
           whitelistFeeWei: weiOf(input.fees.whitelist),
+          tradingFeeWei: weiOf(input.fees.trading),
+          antibotFeeWei: weiOf(input.fees.antiBot),
+          autoliquidityFeeWei: weiOf(input.fees.autoLiquidity),
           adminId: input.adminId,
           version,
           metadata,
@@ -813,6 +832,9 @@ export class InMemoryPricingStore implements PricingStore {
       maxWalletFeeWei: weiOf(input.fees.maxWallet),
       blacklistFeeWei: weiOf(input.fees.blacklist),
       whitelistFeeWei: weiOf(input.fees.whitelist),
+      tradingFeeWei: weiOf(input.fees.trading),
+      antibotFeeWei: weiOf(input.fees.antiBot),
+      autoliquidityFeeWei: weiOf(input.fees.autoLiquidity),
       createdByAdminId: input.adminId,
       createdAt: now,
       activatedAt: now,

@@ -43,19 +43,21 @@ functions ready for a future server action / API layer (wiring in a later phase)
   built purely from bigint/string operations — no floating point, truncates
   deeper precision deterministically rather than rounding.
 
-## Canonical features
+## Canonical features (V1)
 
 - Paid add-ons: `burn`, `mint`, `pause`, `maxTx`, `maxWallet`, `blacklist`,
-  `whitelist`.
+  `whitelist`, `trading`, `antiBot`, `autoLiquidity`.
 - Included at no extra cost: `transferOwnership`, `renounceOwnership`.
-- Coming soon (not purchasable): `buySellTax`, `marketingWallet`, `feeExemption`,
-  `antiBot`, `autoLiquidity`.
+- Coming soon: none in V1. `buySellTax`, `marketingWallet` and `feeExemption`
+  were folded into the single priced `trading` capability; `antiBot` and
+  `autoLiquidity` graduated to paid. A version whose fee column is NULL does
+  not offer that capability (`feature-not-offered`, fail closed).
 
 Selection rules (typed validation errors):
 
 - Duplicate selection of the same id → rejected explicitly.
 - `blacklist` and `whitelist` are mutually exclusive.
-- Included and coming-soon ids can never be selected as paid add-ons.
+- Included ids can never be selected as paid add-ons.
 - Unknown ids are rejected. (No `reflection` feature exists.)
 
 ## Calculation
@@ -121,8 +123,8 @@ server-only modules into the client bundle.
   amounts are BNB decimal strings (e.g. `totalBnb: "0.065"`). No `bigint`
   literal (`123n`) ever reaches `JSON.stringify` output.
 - `parseQuoteRequest` enforces the quote **boundary**: it accepts only
-  currently **paid/purchasable** features; included and coming-soon ids are
-  rejected as `unknown-feature` because they cannot be quoted as paid add-ons.
+  currently **paid/purchasable** features; included ids are rejected and
+  capabilities a pricing version does not offer fail closed at pricing time.
 - Campaign windows are resolved by `resolveCampaignForTime`: a campaign only
   produces `discountWei` in the DTO when it is genuinely active in-window for
   the `now` supplied; future/expired/inactive campaigns yield `campaign: null`

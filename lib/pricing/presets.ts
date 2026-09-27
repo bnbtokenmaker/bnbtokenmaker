@@ -13,6 +13,9 @@ export const DEFAULT_FEAT_SELECTION: FeatureSelection = {
   maxWallet: false,
   blacklist: false,
   whitelist: false,
+  trading: false,
+  antiBot: false,
+  autoLiquidity: false,
 };
 
 export const PRESETS: Record<PresetId, FeatureSelection> = {

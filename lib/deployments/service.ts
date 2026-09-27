@@ -75,6 +75,7 @@ function verificationToPublicCode(code: string): RecordDeploymentsErrorCode {
       return "not-confirmed";
     case "factory-mismatch":
     case "nonzero-value":
+    case "fee-mismatch":
     case "event-missing":
       return "unverifiable";
     case "factory-unavailable":

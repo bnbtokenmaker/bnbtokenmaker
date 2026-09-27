@@ -1,0 +1,119 @@
+{
+  "schema": "bnbtokenmaker-contract-freeze/1",
+  "toolchain": {
+    "solc": "0.8.28",
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "evmVersion": "paris",
+    "metadata": {
+      "bytecodeHash": "ipfs"
+    },
+    "viaIR": false,
+    "openzeppelin": "5.4.0"
+  },
+  "gate": {
+    "factoryDeployedMaxBytes": 23000,
+    "eip170MaxBytes": 24576
+  },
+  "contracts": [
+    {
+      "contract": "SwapLib",
+      "source": "SwapLib.sol",
+      "sourceSha256": "4656a0f6c895ff4b1bacb2b5dd2b1587c163527d42d9dc74797b6f8ba532c0ce",
+      "abiSha256": "5c3124de18e3a39a57a2e5c9ae4257f553b0db9f8d8b262686e6cde22792b921",
+      "abiFunctions": 3,
+      "abiEvents": 3,
+      "deployedBytes": 4300,
+      "creationBytes": 4357,
+      "deployedBytecodeSha256": "1f42962aebec688c3c62911778b909da1d0f1cfc9229757baf6e0ebb8cc9c5f4",
+      "creationBytecodeSha256": "7d80854c6d60edc28620b6f3525d3f1d6379aa87cd48caf5bedb806741c1729a",
+      "linkReferences": {}
+    },
+    {
+      "contract": "BNBTokenMakerToken",
+      "source": "BNBTokenMakerToken.sol",
+      "sourceSha256": "ca5c378f58bec3ecfd2853751a4c7c6aa6ee41ae7ac535cf0dce4787691b5c47",
+      "abiSha256": "46f823d59a49615dcb28b3f108ef35e205dcca44d90e3de1c2fd91660f8fc895",
+      "abiFunctions": 54,
+      "abiEvents": 17,
+      "deployedBytes": 10862,
+      "creationBytes": 16810,
+      "deployedBytecodeSha256": "02cd911707daace9e33f62884ed379a0eeb6025c1e754d8a240583de8267d1f4",
+      "creationBytecodeSha256": "cd0b6db3f34cee9cd9fd0b7c0131b1014cf9839c0cda54ce66e2714ff698e291",
+      "linkReferences": {
+        "contracts/SwapLib.sol": {
+          "SwapLib": [
+            {
+              "length": 20,
+              "start": 203
+            },
+            {
+              "length": 20,
+              "start": 504
+            },
+            {
+              "length": 20,
+              "start": 3449
+            },
+            {
+              "length": 20,
+              "start": 3668
+            },
+            {
+              "length": 20,
+              "start": 15359
+            },
+            {
+              "length": 20,
+              "start": 15636
+            }
+          ]
+        }
+      }
+    },
+    {
+      "contract": "TokenFactory",
+      "source": "TokenFactory.sol",
+      "sourceSha256": "2649ff03426cd9d801a92d6cd486c356129cd8114e69f77e01263a116d9c55c9",
+      "abiSha256": "808b083a05e37965a3d58c3dfd3da15be1d70ffe1bb248c7e764d3467835aa0e",
+      "abiFunctions": 9,
+      "abiEvents": 5,
+      "deployedBytes": 22843,
+      "creationBytes": 24222,
+      "deployedBytecodeSha256": "0076cc0ff972f0ca0286e37e873ca925b03978199b221324cf3f671bcc5d5e52",
+      "creationBytecodeSha256": "6d45ef4345723dd391b2a02fc9d0229d50824760882987154f09f21870031d32",
+      "linkReferences": {
+        "contracts/SwapLib.sol": {
+          "SwapLib": [
+            {
+              "length": 20,
+              "start": 7562
+            },
+            {
+              "length": 20,
+              "start": 7863
+            },
+            {
+              "length": 20,
+              "start": 10808
+            },
+            {
+              "length": 20,
+              "start": 11027
+            },
+            {
+              "length": 20,
+              "start": 22718
+            },
+            {
+              "length": 20,
+              "start": 22995
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

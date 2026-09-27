@@ -40,8 +40,15 @@ const config: HardhatUserConfig = {
     bscTestnet: {
       url: BSC_TESTNET_RPC_URL,
       chainId: 97,
-      // No accounts configured on purpose: Phase 6B performs NO automated
-      // signing. Testnet deployment is wallet-signed manually (see README).
+      // 7D-F Stage B: the automated testnet deployment signs locally via
+      // Hardhat's own signer stack (independent of viem key handling).
+      // The key comes ONLY from TESTNET_DEPLOYER_KEY (server/operator env,
+      // never committed); default [] preserves the old no-accounts posture
+      // whenever the variable is unset.
+      accounts:
+        (process.env.TESTNET_DEPLOYER_KEY ?? "").trim() === ""
+          ? []
+          : [(process.env.TESTNET_DEPLOYER_KEY ?? "").trim()],
     },
   },
   etherscan: {

@@ -140,6 +140,37 @@ describe("deployments — versioned feature config", () => {
       maxWallet: false,
       blacklist: true,
       whitelist: false,
+      trading: false,
+      antiBot: false,
+      autoLiquidity: false,
+    });
+  });
+
+  it("derives new capability bits from a 10-bit bitmap", () => {
+    const config = featureConfigFromBitmap(1023n);
+    assert.deepEqual(
+      [config.trading, config.antiBot, config.autoLiquidity],
+      [true, true, true]
+    );
+    assert.deepEqual(featureIdsFromConfig(config).length, 10);
+  });
+
+  it("parses legacy 7-key rows with new capabilities defaulting off", () => {
+    const legacy = {
+      version: 1,
+      burn: true,
+      mint: false,
+      pause: false,
+      maxTx: false,
+      maxWallet: false,
+      blacklist: false,
+      whitelist: false,
+    };
+    assert.deepEqual(parseFeatureConfig(legacy), {
+      ...legacy,
+      trading: false,
+      antiBot: false,
+      autoLiquidity: false,
     });
   });
 

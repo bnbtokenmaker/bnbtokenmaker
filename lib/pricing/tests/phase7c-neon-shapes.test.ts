@@ -40,6 +40,9 @@ const SEED_FEES = {
   maxWallet: "0.010",
   blacklist: "0.010",
   whitelist: "0.010",
+  trading: "0.020",
+  antiBot: "0.010",
+  autoLiquidity: "0.015",
 } as const;
 
 /** Minimal Neon-HTTP-shaped executor: rows carry string ids, like OID 20. */
@@ -230,6 +233,9 @@ describe("phase 7C neon-shape regression — lib/pricing/server/store.ts", () =>
         maxWalletFeeWei: "1",
         blacklistFeeWei: "1",
         whitelistFeeWei: "1",
+        tradingFeeWei: "1",
+        antibotFeeWei: "1",
+        autoliquidityFeeWei: "1",
         adminId: 1,
         version: "v7",
         metadata: "{}",

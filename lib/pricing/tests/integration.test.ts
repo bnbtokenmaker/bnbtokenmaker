@@ -101,14 +101,18 @@ describe("builder pricing adapter integration — NON-PRODUCTION TEST FIXTURES",
     assert.equal(result.totalPlatformFeeWei, result.subtotalWei);
   });
 
-  it("Coming Soon features cannot be priced", () => {
-    for (const id of ["buySellTax", "marketingWallet", "feeExemption", "antiBot", "autoLiquidity"]) {
+  it("graduated V1 capabilities price (no longer coming-soon)", () => {
+    for (const id of ["trading", "antiBot", "autoLiquidity"]) {
+      const result = calculatePlatformFee(DEVELOPMENT_PRICING_CONFIG, [id]);
+      assert.equal(result.selectedFeatures.length, 1);
+    }
+    for (const id of ["buySellTax", "marketingWallet", "feeExemption"]) {
       assert.throws(
         () => calculatePlatformFee(DEVELOPMENT_PRICING_CONFIG, [id]),
         (error) =>
           error instanceof Error &&
           "code" in error &&
-          (error as { code: string }).code === "coming-soon-feature-selected"
+          (error as { code: string }).code === "unknown-feature"
       );
     }
   });

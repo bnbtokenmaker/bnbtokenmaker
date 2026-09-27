@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Phase 6C deployment flow: REVIEW → VALIDATE → WALLET → BROADCAST → RECEIPT.
+ * Phase 7D-E2 deployment flow: REVIEW → AUTHORIZE → VALIDATE → WALLET →
+ * BROADCAST → RECEIPT against the frozen V1 factory.
  *
  * Security posture (mirrors Phase 6A/6B, no new wallet logic):
  * - No automatic network switching: no wallet_switchEthereumChain /
@@ -10,9 +11,15 @@
  *   re-verified (same object, expected account, fresh eth_chainId) and the
  *   live chain must be exactly 97. Cached wagmi/UI state never authorizes.
  * - Mainnet (or any non-97 chain) renders preview-only: no transaction path.
- * - The testnet factory is non-payable: every deployment sends zero value.
- * - Money comes only from the server quote endpoint; gas is estimated via
- *   the real factory call and always displayed separately.
+ * - The V1 factory address is resolved from explicit configuration; when
+ *   unset, deployment is unavailable (fail-closed) — the legacy Phase 6B
+ *   factory is NEVER silently substituted for V1 calls.
+ * - Money comes only from the signed EIP-712 authorization (exact
+ *   msg.value = feeWei); gas is estimated via the real factory call and
+ *   always displayed separately.
+ * - The signed TokenConfig is never reconstructed or mutated after
+ *   authorization: calldata is built from the package, and ANY form change
+ *   invalidates the package.
  */
 
 import {
@@ -27,6 +34,7 @@ import {
 } from "react";
 import { useConnection } from "wagmi";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { createPublicClient, http } from "viem";
 import { bscTestnet } from "viem/chains";
@@ -50,19 +58,26 @@ import {
 import { formatWeiBnbCompact, formatWeiBnbDisplay } from "../lib/pricing";
 import { clearDeployDraft } from "../lib/deploy/draft-transfer";
 import { selectedFeatureIds, type FeatureSelection } from "../lib/pricing/presets";
+import { factoryAddress, v1FactoryAddress } from "../lib/token/factory";
 import {
-  TokenConfigError,
-  flagsFromSelection,
-  toContractArgs,
-  validateTokenConfig,
-  type ValidatedTokenConfig,
-} from "../lib/token/config";
-import { factoryAbi, factoryAddress } from "../lib/token/factory";
+  authorizationFingerprint,
+  isGasEstimateReady,
+  isPackageOwnerMatch,
+  isPackageUsable,
+  packageToCalldata,
+  parseDeploymentPackage,
+  validateV1Form,
+  type ParsedDeploymentPackage,
+  type V1FormState,
+} from "../lib/deploy/v1-config";
+import type { AuthorizeTokenInput } from "../lib/deploy/authorize";
+import { trackCreateEvent } from "../lib/deploy/analytics";
 import {
   clearDeployResult,
   fetchAndVerifyDeployResult,
   loadDeployResult,
   saveDeployResult,
+  storedResultMatchesDraft,
   type DeployResultV1,
   type VerifiedDeployment,
 } from "../lib/deploy/result";
@@ -70,7 +85,6 @@ import {
   PHASE6B_CHAIN_ID,
   Phase6bDeploymentError,
   assertPhase6bChain,
-  assertPhase6bPreTransaction,
 } from "../lib/deploy/phase6b";
 import {
   INITIAL_DEPLOY_STATE,
@@ -97,14 +111,13 @@ import {
   explorerTokenPageUrl,
   explorerTxUrl,
   findDeployedTokenAddress,
+  findDeploymentPaid,
   isReceiptSuccess,
   isTxHash,
   loadPendingDeployment,
-  prepareDeploymentTx,
   savePendingDeployment,
   shortenTxHash,
   type PendingDeployment,
-  type PreparedDeployment,
 } from "../lib/deploy/tx";
 import { requestDeploymentRecord } from "../lib/deploy/record-client";
 
@@ -123,6 +136,13 @@ export type DeployFlowProps = {
   feats: FeatureSelection;
   maxTxPercent: string;
   maxWalletPercent: string;
+  /** V1 additions (optional for backward compat with pre-V1 drafts). */
+  mintMode?: "capped" | "unlimited";
+  maxSupplyHuman?: string;
+  buyTaxBps?: string;
+  sellTaxBps?: string;
+  marketingWallet?: string;
+  snipeBlocks?: string;
 };
 
 type GasSnapshot = {
@@ -159,6 +179,10 @@ type SuccessPanelProps = {
   onCreateAnother: () => void;
   /** Live path passes the scroll-target ref; restored path passes null. */
   panelRef: RefObject<HTMLDivElement | null> | null;
+  /** Exact platform fee paid (wei), when known from the V1 package. */
+  feePaidWei?: string | null;
+  /** Priced capability ids deployed with, for the success summary. */
+  features?: readonly string[] | null;
 };
 
 /**
@@ -175,6 +199,8 @@ function SuccessPanel({
   onCopy,
   onCreateAnother,
   panelRef,
+  feePaidWei = null,
+  features = null,
 }: SuccessPanelProps) {
   return (
     <div
@@ -224,6 +250,21 @@ function SuccessPanel({
           <dt>Network</dt>
           <dd>BNB Smart Chain Testnet (97)</dd>
         </div>
+        {feePaidWei !== null && (
+          <div>
+            <dt>Platform fee paid</dt>
+            <dd>{formatWeiBnbDisplay(BigInt(feePaidWei))} BNB</dd>
+          </div>
+        )}
+        {features !== null && features.length > 0 && (
+          <div>
+            <dt>Features</dt>
+            <dd>{features.map((id) => <FeatureSummaryLabel key={id} id={id} />).reduce<ReactNode[]>(
+              (acc, node, index) => (index === 0 ? [node] : [...acc, ", ", node]),
+              []
+            )}</dd>
+          </div>
+        )}
       </dl>
       <div className="deploy-actions deploy-success-actions">
         {explorerTokenPageUrl(token) && (
@@ -247,6 +288,12 @@ function SuccessPanel({
               View transaction
             </a>
           )}
+          <Link
+            className="btn btn-ghost"
+            href={`/manage/97/${token}`}
+          >
+            Manage Token
+          </Link>
           <button type="button" className="btn btn-ghost" onClick={onCreateAnother}>
             Create another token
           </button>
@@ -265,8 +312,39 @@ function FeatureSummaryLabel({ id }: { id: string }) {
     maxWallet: "Max Wallet",
     blacklist: "Blacklist",
     whitelist: "Whitelist",
+    trading: "Trading fees",
+    antiBot: "Anti-bot",
+    autoLiquidity: "Auto-liquidity",
   };
   return <>{labels[id] ?? id}</>;
+}
+
+/** Plain-object authorize input for the API body (module scope: pure). */
+function authorizeInputToJson(input: AuthorizeTokenInput): Record<string, unknown> {
+  return {
+    name: input.name,
+    symbol: input.symbol,
+    decimals: input.decimals,
+    initialSupplyBase: input.initialSupplyBase,
+    owner: input.owner,
+    burnable: input.burnable,
+    mintable: input.mintable,
+    pausable: input.pausable,
+    maxTxAmountBase: input.maxTxAmountBase,
+    maxWalletAmountBase: input.maxWalletAmountBase,
+    blacklistEnabled: input.blacklistEnabled,
+    whitelistEnabled: input.whitelistEnabled,
+    buyTaxBps: input.buyTaxBps,
+    sellTaxBps: input.sellTaxBps,
+    marketingWallet: input.marketingWallet,
+    marketingShareBps: input.marketingShareBps,
+    liquidityShareBps: input.liquidityShareBps,
+    autoLiquidityEnabled: input.autoLiquidityEnabled,
+    swapThresholdBase: input.swapThresholdBase,
+    antiBotEnabled: input.antiBotEnabled,
+    snipeBlocks: input.snipeBlocks,
+    maxSupplyBase: input.maxSupplyBase,
+  };
 }
 
 export function DeployFlow({
@@ -277,6 +355,12 @@ export function DeployFlow({
   feats,
   maxTxPercent,
   maxWalletPercent,
+  mintMode = "capped",
+  maxSupplyHuman = "",
+  buyTaxBps = "4",
+  sellTaxBps = "6",
+  marketingWallet = "",
+  snipeBlocks = "5",
 }: DeployFlowProps) {
   const { isConnected, address, connector } = useConnection();
   const network = useWalletNetwork();
@@ -303,36 +387,74 @@ export function DeployFlow({
     recordedRef.current.add(txHash);
     void requestDeploymentRecord(txHash);
   }, []);
+  // V1 authorization lifecycle: a package is valid only for the exact
+  // fingerprint it was issued for; ANY form/account change discards it.
+  const [authPkg, setAuthPkg] = useState<ParsedDeploymentPackage | null>(null);
+  const [authFingerprint, setAuthFingerprint] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<{ fingerprint: string; code: string } | null>(null);
+  const [paidInfo, setPaidInfo] = useState<{
+    feeWei: string;
+    pricingVersion: `0x${string}`;
+    nonce: `0x${string}`;
+  } | null>(null);
+  // Coarse wall-clock for package-expiry gating (external sync, no render math).
+  const [nowTick, setNowTick] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Math.floor(Date.now() / 1000)), 15000);
+    return () => clearInterval(timer);
+  }, []);
 
   const featureIds = useMemo(() => selectedFeatureIds(feats), [feats]);
   const onTestnet = isConnected && network.status === "testnet";
   const onMainnet = isConnected && network.status === "mainnet";
+  // V1 factory boundary: null until 7D-F deploys the frozen V1 factory.
+  // Chain 56 is hard-disabled inside v1FactoryAddress regardless.
+  const v1Factory = v1FactoryAddress(97);
 
-  const fingerprint = useMemo(
-    () =>
-      JSON.stringify({
-        tokenName: tokenName.trim(),
-        tokenSymbol: tokenSymbol.trim(),
-        decimals: decimals.trim(),
-        supply: supply.replace(/\D/g, ""),
-        feats: featureIds,
-        maxTxPercent: feats.maxTx ? maxTxPercent.trim() : null,
-        maxWalletPercent: feats.maxWallet ? maxWalletPercent.trim() : null,
-        account: address?.toLowerCase() ?? null,
-      }),
-    [
-      tokenName,
-      tokenSymbol,
-      decimals,
-      supply,
-      feats.maxTx,
-      feats.maxWallet,
-      featureIds,
-      maxTxPercent,
-      maxWalletPercent,
-      address,
-    ]
+  // V1 form assembly from draft-carried props (review + authorize input).
+  const v1Form: V1FormState = {
+    name: tokenName,
+    symbol: tokenSymbol,
+    decimals,
+    supplyHuman: supply,
+    burnable: feats.burn,
+    mintable: feats.mint,
+    mintMode,
+    maxSupplyHuman,
+    pausable: feats.pause,
+    maxTxOn: feats.maxTx,
+    maxTxPercent,
+    maxWalletOn: feats.maxWallet,
+    maxWalletPercent,
+    blacklist: feats.blacklist,
+    whitelist: feats.whitelist,
+    trading: feats.trading,
+    buyTaxBps,
+    sellTaxBps,
+    marketingWallet,
+    antiBot: feats.antiBot,
+    snipeBlocks,
+    autoLiquidity: feats.autoLiquidity,
+  };
+  const reviewOwner = (address ?? "0x0000000000000000000000000000000000000001") as `0x${string}`;
+  const v1Review = useMemo(
+    () => validateV1Form(v1Form, reviewOwner),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tokenName, tokenSymbol, decimals, supply, feats, mintMode, maxSupplyHuman, maxTxPercent, maxWalletPercent, buyTaxBps, sellTaxBps, marketingWallet, snipeBlocks, reviewOwner]
   );
+  const reviewInput: AuthorizeTokenInput | null = v1Review.ok ? v1Review.input : null;
+  const reviewValid =
+    v1Review.ok && !(feats.blacklist && feats.whitelist) && onTestnet;
+
+  const fingerprint = useMemo(() => {
+    if (!reviewInput) return null;
+    return authorizationFingerprint({
+      token: reviewInput,
+      chainId: 97,
+      account: address ?? null,
+    });
+  }, [reviewInput, address]);
 
   const dispatch = useCallback((event: DeployEvent) => {
     try {
@@ -344,15 +466,18 @@ export function DeployFlow({
     }
   }, []);
 
-  // Any form/account change invalidates the current review (locked attempts
-  // and finished/error states are intentionally left untouched by the
-  // machine so an in-flight hash is never lost).
+  // Any form/account change invalidates the current review. Authorization
+  // staleness needs no effect: packages carry their issuance fingerprint
+  // and only match the CURRENT fingerprint (locked attempts and
+  // finished/error states are intentionally left untouched by the machine
+  // so an in-flight hash is never lost).
   useEffect(() => {
     dispatch({ type: "FORM_CHANGED" });
   }, [fingerprint, dispatch]);
 
-  // Fresh authoritative quote for REVIEW (never client-calculated), served
-  // by React Query: no fetch-in-effect, cached per feature selection.
+  // Fresh informational price for REVIEW (never client-calculated), served
+  // by React Query: no fetch-in-effect, cached per feature selection. The
+  // AUTHORITATIVE fee arrives with the signed package (see below).
   const quoteQuery = useQuery({
     queryKey: ["deploy-quote", ...featureIds],
     queryFn: () => fetchAuthoritativeQuote(featureIds),
@@ -371,112 +496,151 @@ export function DeployFlow({
   const quoteLoading = quoteActive && quoteQuery.isPending;
   const quoteFailed = quoteActive && quoteQuery.isError;
 
-  // Lightweight review-validity used to enable the gas preview query. Full
-  // validation (with the live deployer as owner) runs pre-transaction.
-  const reviewValid = useMemo(() => {
-    try {
-      validateTokenConfig({
-        name: tokenName,
-        symbol: tokenSymbol,
-        decimals,
-        supplyHuman: supply,
-        owner: (address ?? "0x0000000000000000000000000000000000000001") as `0x${string}`,
-        features: flagsFromSelection(featureIds),
-        maxTxPercent: feats.maxTx ? maxTxPercent : undefined,
-        maxWalletPercent: feats.maxWallet ? maxWalletPercent : undefined,
-      });
-      return !(feats.blacklist && feats.whitelist);
-    } catch {
-      return false;
-    }
-  }, [
-    tokenName,
-    tokenSymbol,
-    decimals,
-    supply,
-    address,
-    featureIds,
-    feats.maxTx,
-    feats.maxWallet,
-    feats.blacklist,
-    feats.whitelist,
-    maxTxPercent,
-    maxWalletPercent,
-  ]);
+  // V1 authorization: exactly one package per fingerprint, requested
+  // explicitly AFTER review. Never reconstructed, never mutated. A package
+  // is usable only while its issuance fingerprint matches the CURRENT form
+  // (any edit invalidates it without effects) and its expiry is in the
+  // future (checked against a coarse ticking clock, never render math).
+  const usablePkg =
+    authPkg !== null &&
+    authFingerprint !== null &&
+    authFingerprint === fingerprint &&
+    isPackageUsable(authPkg, nowTick)
+      ? authPkg
+      : null;
+  const visibleAuthError =
+    authError !== null && authError.fingerprint === fingerprint ? authError.code : null;
 
-  // Gas preview for REVIEW: simulate + estimate the real factory call. A
-  // reverted simulation or a failed estimate blocks deployment (fail closed).
+  const requestAuthorization = useCallback(async () => {
+    if (authLoading) return;
+    if (!isConnected || !address || !reviewInput || !fingerprint) return;
+    if (!v1Factory) return;
+    setAuthLoading(true);
+    setAuthError(null);
+    trackCreateEvent(
+      { name: "authorization_requested", features: featureIds },
+      typeof window !== "undefined" ? window.gtag : undefined
+    );
+    try {
+      const response = await fetch("/api/deployments/authorize", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: authorizeInputToJson(reviewInput), chainId: 97 }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: { code?: string };
+        } | null;
+        throw new DeployFlowError(
+          response.status === 503 ? "authorization-failed" : "invalid-config",
+          typeof body?.error?.code === "string" ? body.error.code : undefined
+        );
+      }
+      const body = (await response.json().catch(() => null)) as {
+        package?: unknown;
+      } | null;
+      const pkg = parseDeploymentPackage(body?.package);
+      if (pkg.factory.toLowerCase() !== v1Factory.toLowerCase() || pkg.chainId !== 97) {
+        throw new DeployFlowError("authorization-failed", "factory-mismatch");
+      }
+      if (!isPackageOwnerMatch(pkg.token.owner, address)) {
+        throw new DeployFlowError("authorization-failed", "account-changed");
+      }
+      setAuthPkg(pkg);
+      setAuthFingerprint(fingerprint);
+      trackCreateEvent({ name: "authorization_received", chainId: 97 }, window.gtag);
+    } catch (error) {
+      if (error instanceof DeployFlowError) {
+        setAuthError({ fingerprint, code: error.code });
+      } else {
+        setAuthError({ fingerprint, code: "authorization-failed" });
+      }
+      setAuthPkg(null);
+      setAuthFingerprint(null);
+    } finally {
+      setAuthLoading(false);
+    }
+  }, [authLoading, isConnected, address, reviewInput, fingerprint, v1Factory, featureIds]);
+
+  // Gas preview for REVIEW: eth_call simulation + estimate on the EXACT
+  // authorized payload (calldata + fee value). A reverted simulation or a
+  // failed estimate blocks deployment (fail closed). Requires a usable
+  // package — estimates are never shown for unsigned configurations.
   const gasQuery = useQuery({
     queryKey: [
       "deploy-gas",
       fingerprint,
-      visibleQuote?.pricingVersion ?? null,
+      usablePkg?.configHash ?? null,
       address?.toLowerCase() ?? null,
     ],
     queryFn: async (): Promise<GasSnapshot> => {
       if (!address) throw new DeployFlowError("wallet-disconnected");
-      const validated = validateTokenConfig({
-        name: tokenName,
-        symbol: tokenSymbol,
-        decimals,
-        supplyHuman: supply,
-        owner: address as `0x${string}`,
-        features: flagsFromSelection(featureIds),
-        maxTxPercent: feats.maxTx ? maxTxPercent : undefined,
-        maxWalletPercent: feats.maxWallet ? maxWalletPercent : undefined,
-      });
-      if (validated.features.blacklist && validated.features.whitelist) {
-        throw new DeployFlowError("invalid-config", "lists-exclusive");
-      }
-      const prepared = prepareDeploymentTx(PHASE6B_CHAIN_ID, validated);
+      if (!usablePkg || !v1Factory) throw new DeployFlowError("authorization-failed");
       const account = address as `0x${string}`;
-      const tokenArgs = toContractArgs(validated);
+      const { data, valueHex } = packageToCalldata({
+        token: usablePkg.token,
+        quote: {
+          configHash: usablePkg.quote.configHash,
+          feeWei: usablePkg.quote.feeWei,
+          chainId: usablePkg.quote.chainId,
+          factory: usablePkg.quote.factory,
+          nonce: usablePkg.quote.nonce,
+          expiry: usablePkg.quote.expiry,
+          pricingVersion: usablePkg.quote.pricingVersion,
+        },
+        signature: usablePkg.signature,
+      });
+      const value = BigInt(valueHex);
       try {
-        await testnetPublicClient.simulateContract({
+        await testnetPublicClient.call({
           account,
-          address: prepared.factory,
-          abi: factoryAbi as never,
-          functionName: "createToken",
-          args: [{ token: tokenArgs }],
-          value: 0n,
-        } as never);
+          to: v1Factory,
+          data,
+          value,
+        });
       } catch (error) {
         if (error instanceof DeployFlowError) throw error;
         throw new DeployFlowError("simulation-reverted");
       }
       try {
         const [estimate, gasPrice, balance] = await Promise.all([
-          testnetPublicClient.estimateContractGas({
-            account,
-            address: prepared.factory,
-            abi: factoryAbi as never,
-            functionName: "createToken",
-            args: [{ token: tokenArgs }],
-            value: 0n,
-          } as never),
+          testnetPublicClient.estimateGas({ account, to: v1Factory, data, value }),
           testnetPublicClient.getGasPrice(),
           testnetPublicClient.getBalance({ address: account }),
         ]);
+        if (balance < value + estimate * gasPrice) {
+          throw new DeployFlowError("insufficient-gas-funds");
+        }
         return {
           gas: estimate,
           gasPriceWei: gasPrice,
           costWei: estimate * gasPrice,
           balanceWei: balance,
         };
-      } catch {
+      } catch (error) {
+        if (error instanceof DeployFlowError) throw error;
         throw new DeployFlowError("gas-estimate-failed");
       }
     },
-    enabled: onTestnet && !!address && !!visibleQuote && reviewValid,
+    enabled: isGasEstimateReady({
+      onTestnet,
+      address: address ?? null,
+      hasQuote: !!visibleQuote,
+      reviewValid,
+      hasPackage: !!usablePkg,
+    }),
     retry: 1,
   });
   const refreshGas = useCallback(() => {
     void gasQuery.refetch();
   }, [gasQuery]);
+  // Before authorization there is simply no signed payload to estimate yet:
+  // report neutral (—), not a failure. Real estimate failures after a usable
+  // package exists still surface via gasFailed.
   const gasPreview: GasSnapshot | null =
     onTestnet && reviewValid ? (gasQuery.data ?? null) : null;
-  const gasLoading = onTestnet && reviewValid && gasQuery.isPending;
-  const gasFailed = onTestnet && reviewValid && gasQuery.isError;
+  const gasLoading = onTestnet && reviewValid && !!usablePkg && gasQuery.isPending;
+  const gasFailed = onTestnet && reviewValid && !!usablePkg && gasQuery.isError;
   // Development-only diagnostics: sanitized error codes behind failed
   // quote/gas fetches. Null in production, so production UI is unchanged.
   const devQuoteCode = quoteFailed
@@ -498,7 +662,13 @@ export function DeployFlow({
   }, []);
 
   const waitForReceipt = useCallback(
-    async (txHash: `0x${string}`): Promise<`0x${string}`> => {
+    async (
+      txHash: `0x${string}`,
+      expected?: { feeWei: bigint; payer: `0x${string}` }
+    ): Promise<{
+      token: `0x${string}`;
+      paid: { feeWei: string; pricingVersion: `0x${string}`; nonce: `0x${string}` } | null;
+    }> => {
       const receipt = await testnetPublicClient.waitForTransactionReceipt({
         hash: txHash,
         timeout: RECEIPT_TIMEOUT_MS,
@@ -506,22 +676,46 @@ export function DeployFlow({
       if (!isReceiptSuccess(receipt.status)) {
         throw new DeployFlowError("tx-reverted");
       }
-      const token = findDeployedTokenAddress(
-        receipt.logs as { topics: [`0x${string}`, ...`0x${string}`[]]; data: `0x${string}` }[]
-      );
+      const logs = receipt.logs as { topics: [`0x${string}`, ...`0x${string}`[]]; data: `0x${string}` }[];
+      const token = findDeployedTokenAddress(logs);
       if (!token) {
         throw new DeployFlowError("event-missing");
       }
-      return token;
+      // V1 payment verification: the DeploymentPaid attestation must match
+      // the created token, the payer and the exact authorized fee. Legacy
+      // receipts without the event keep the informational path.
+      const paid = findDeploymentPaid(logs);
+      if (paid) {
+        if (
+          paid.token.toLowerCase() !== token.toLowerCase() ||
+          (expected && paid.payer.toLowerCase() !== expected.payer.toLowerCase()) ||
+          (expected && paid.feeWei !== expected.feeWei)
+        ) {
+          throw new DeployFlowError("fee-mismatch");
+        }
+        return {
+          token,
+          paid: {
+            feeWei: paid.feeWei.toString(10),
+            pricingVersion: paid.pricingVersion,
+            nonce: paid.nonce,
+          },
+        };
+      }
+      return { token, paid: null };
     },
     []
   );
 
-  /** Full pre-transaction gate. Throws DeployFlowError / Phase6b faults only. */
+  /** Full pre-transaction gate (V1). Throws DeployFlowError / Phase6b faults only. */
   const runPreTransactionGates = useCallback(async (): Promise<{
-    prepared: PreparedDeployment;
+    factory: `0x${string}`;
     deployer: `0x${string}`;
     provider: { request: (args: { method: string; params?: unknown }) => Promise<unknown> };
+    data: `0x${string}`;
+    valueHex: `0x${string}`;
+    feeWei: bigint;
+    pkg: ParsedDeploymentPackage;
   }> => {
     if (!isConnected || !address || !connector) {
       throw new DeployFlowError("wallet-disconnected");
@@ -566,128 +760,102 @@ export function DeployFlow({
       }
       throw error;
     }
+    if (liveChainId !== 97) {
+      throw new DeployFlowError("wrong-network");
+    }
     const deployer = address.toLowerCase() as `0x${string}`;
 
-    let validated: ValidatedTokenConfig;
-    try {
-      validated = validateTokenConfig({
-        name: tokenName,
-        symbol: tokenSymbol,
-        decimals,
-        supplyHuman: supply,
-        owner: deployer,
-        features: flagsFromSelection(featureIds),
-        maxTxPercent: feats.maxTx ? maxTxPercent : undefined,
-        maxWalletPercent: feats.maxWallet ? maxWalletPercent : undefined,
-      });
-    } catch (error) {
-      if (error instanceof TokenConfigError) {
-        throw new DeployFlowError("invalid-config", error.code);
+    // A usable package for the CURRENT fingerprint is mandatory: the exact
+    // signed config/fee/factory/chain, unexpired. Anything else fails closed.
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const pkg =
+      authPkg !== null &&
+      authFingerprint !== null &&
+      authFingerprint === fingerprint &&
+      isPackageUsable(authPkg, nowSeconds)
+        ? authPkg
+        : null;
+    if (!pkg || !fingerprint) {
+      if (authPkg !== null && !isPackageUsable(authPkg, nowSeconds)) {
+        trackCreateEvent({ name: "authorization_expired" }, window.gtag);
       }
-      throw error;
+      throw new DeployFlowError("authorization-failed");
     }
-    // Public-UI rule: blacklist and whitelist are mutually exclusive.
-    if (validated.features.blacklist && validated.features.whitelist) {
-      throw new DeployFlowError("invalid-config", "lists-exclusive");
+    if (!v1Factory || pkg.factory.toLowerCase() !== v1Factory.toLowerCase()) {
+      throw new DeployFlowError("factory-unavailable");
     }
     // Owner is always the connected deployer (factory enforces owner == sender).
-    if (validated.owner.toLowerCase() !== deployer) {
+    // Case-insensitive binding (see isPackageOwnerMatch): the signed package
+    // echoes the checksummed wallet address verbatim.
+    if (!isPackageOwnerMatch(pkg.token.owner, deployer)) {
       throw new DeployFlowError("account-changed");
     }
-
-    // Fresh authoritative server quote; the echoed selection must match.
-    // (Quotes are deterministic per selection, so the REVIEW display of the
-    // same selection shows the same price.)
-    let freshQuote: AuthoritativeQuote;
-    try {
-      freshQuote = await fetchAuthoritativeQuote(featureIds);
-    } catch (error) {
-      if (error instanceof DeployFlowError) throw error;
-      throw new DeployFlowError("quote-stale");
-    }
-    const echoed = new Set(freshQuote.selectedFeatures);
-    if (
-      echoed.size !== featureIds.length ||
-      featureIds.some((id) => !echoed.has(id))
-    ) {
-      throw new DeployFlowError("quote-stale", "selection-mismatch");
-    }
-
-    const prepared = prepareDeploymentTx(liveChainId, validated);
-
-    // Final fail-closed gate: session, account, live chain 97, args, zero fee.
-    assertPhase6bPreTransaction({
-      isConnected: true,
-      expectedAddress: deployer,
-      liveAccounts: verified.accounts,
-      liveChainId,
-      cachedChainId: network.chainId,
-      argsValid: true,
-      txValueWei: 0n,
+    const { data, valueHex } = packageToCalldata({
+      token: pkg.token,
+      quote: {
+        configHash: pkg.quote.configHash,
+        feeWei: pkg.quote.feeWei,
+        chainId: pkg.quote.chainId,
+        factory: pkg.quote.factory,
+        nonce: pkg.quote.nonce,
+        expiry: pkg.quote.expiry,
+        pricingVersion: pkg.quote.pricingVersion,
+      },
+      signature: pkg.signature,
     });
-
+    const feeWei = BigInt(valueHex);
     // Simulation + gas on the exact payload about to be sent.
     let estimate: bigint;
     let gasPrice: bigint;
     let balance: bigint;
-    const calldataArgs = { token: toContractArgs(validated) };
     try {
-      await testnetPublicClient.simulateContract({
+      await testnetPublicClient.call({
         account: deployer,
-        address: prepared.factory,
-        abi: factoryAbi as never,
-        functionName: "createToken",
-        args: [calldataArgs],
-        value: 0n,
-      } as never);
+        to: v1Factory,
+        data,
+        value: feeWei,
+      });
     } catch (error) {
       if (error instanceof DeployFlowError) throw error;
       throw new DeployFlowError("simulation-reverted");
     }
     try {
       [estimate, gasPrice, balance] = await Promise.all([
-        testnetPublicClient.estimateContractGas({
-          account: deployer,
-          address: prepared.factory,
-          abi: factoryAbi as never,
-          functionName: "createToken",
-          args: [calldataArgs],
-          value: 0n,
-        } as never),
+        testnetPublicClient.estimateGas({ account: deployer, to: v1Factory, data, value: feeWei }),
         testnetPublicClient.getGasPrice(),
         testnetPublicClient.getBalance({ address: deployer }),
       ]);
     } catch {
       throw new DeployFlowError("gas-estimate-failed");
     }
-    if (balance < estimate * gasPrice) {
+    if (balance < feeWei + estimate * gasPrice) {
       throw new DeployFlowError("insufficient-gas-funds");
     }
-    return { prepared, deployer, provider: verified.provider };
+    return { factory: v1Factory, deployer, provider: verified.provider, data, valueHex, feeWei, pkg };
   }, [
     isConnected,
     address,
     connector,
     network.chainId,
-    tokenName,
-    tokenSymbol,
-    decimals,
-    supply,
-    featureIds,
-    feats.maxTx,
-    feats.maxWallet,
-    maxTxPercent,
-    maxWalletPercent,
+    authPkg,
+    authFingerprint,
+    fingerprint,
+    v1Factory,
   ]);
 
   const trackReceipt = useCallback(
-    async (txHash: `0x${string}`, announce: boolean) => {
+    async (
+      txHash: `0x${string}`,
+      announce: boolean,
+      expected?: { feeWei: bigint; payer: `0x${string}` }
+    ) => {
       // Fresh submissions move broadcasting → confirming; re-checks and
       // resumed sessions are already confirming and only re-read the receipt.
       if (announce) dispatch({ type: "RECEIPT_WAIT" });
       try {
-        const token = await waitForReceipt(txHash);
+        const { token, paid } = await waitForReceipt(txHash, expected);
         setDeployedToken(token);
+        if (paid) setPaidInfo(paid);
         clearPendingDeployment();
         // Persist a minimal recovery hint for same-tab refresh. It proves
         // nothing by itself: refresh recovery re-verifies the receipt and
@@ -700,13 +868,16 @@ export function DeployFlow({
         });
         setRecovered(null);
         dispatch({ type: "RECEIPT_OK" });
+        trackCreateEvent({ name: "deployment_confirmed", chainId: 97 }, window.gtag);
         // Best-effort server record AFTER confirmed success. Fire-and-forget:
         // recording failure never converts this success into a failure.
         recordServerSide(txHash);
       } catch (error) {
+        const code = error instanceof DeployFlowError ? error.code : classifyReceiptFailure(error);
+        trackCreateEvent({ name: "deployment_failed", code }, window.gtag);
         dispatch({
           type: "RECEIPT_FAIL",
-          code: error instanceof DeployFlowError ? error.code : classifyReceiptFailure(error),
+          code,
         });
       }
     },
@@ -744,20 +915,26 @@ export function DeployFlow({
       }
       dispatch({ type: "VALID_OK" });
       let txHash: unknown;
+      trackCreateEvent({ name: "deployment_submitted", chainId: 97 }, window.gtag);
       try {
         txHash = await gates.provider.request({
           method: "eth_sendTransaction",
           params: [
             {
               from: gates.deployer,
-              to: gates.prepared.factory,
-              data: gates.prepared.data,
-              value: "0x0",
+              to: gates.factory,
+              data: gates.data,
+              // Exact authorized fee — never underpaid, never overpaid.
+              value: gates.valueHex,
             },
           ],
         });
       } catch (error) {
         const code = classifyDeployFailure(error, "tx-submit-failed");
+        trackCreateEvent(
+          { name: "deployment_failed", code },
+          window.gtag
+        );
         dispatch({
           type: code === "user-rejected" ? "WALLET_REJECTED" : "SUBMIT_FAIL",
           code,
@@ -777,7 +954,7 @@ export function DeployFlow({
       });
       setRecovered(null);
       dispatch({ type: "TX_SENT", txHash });
-      await trackReceipt(txHash, true);
+      await trackReceipt(txHash, true, { feeWei: gates.feeWei, payer: gates.deployer });
     } finally {
       attemptLock.current = false;
     }
@@ -814,6 +991,10 @@ export function DeployFlow({
 
   const startNewDeployment = useCallback(() => {
     setDeployedToken(null);
+    setPaidInfo(null);
+    setAuthPkg(null);
+    setAuthFingerprint(null);
+    setAuthError(null);
     dispatch({ type: "NEW_DEPLOYMENT" });
   }, [dispatch]);
 
@@ -835,36 +1016,44 @@ export function DeployFlow({
   // Precedence: verified result > pending hash > review. The stored record
   // is a hint only: success UI returns solely from a freshly verified
   // receipt + factory event. No wallet, no send path anywhere in this flow.
+  // V1 factory is tried first, then the legacy factory (older deployments).
   const [storedResult] = useState<DeployResultV1 | null>(() => loadDeployResult());
   const verifyFactory = factoryAddress(PHASE6B_CHAIN_ID);
   const verifyQuery = useQuery({
     queryKey: ["deploy-result-verify", storedResult?.txHash ?? null],
     queryFn: async (): Promise<VerifiedDeployment> => {
-      if (!storedResult || !verifyFactory) {
+      if (!storedResult || (!v1Factory && !verifyFactory)) {
         throw new DeployFlowError("factory-unavailable");
       }
-      try {
-        return await fetchAndVerifyDeployResult(
-          (hash) => testnetPublicClient.getTransactionReceipt({ hash }),
-          storedResult,
-          verifyFactory
-        );
-      } catch (error) {
-        if (
-          error instanceof DeployFlowError &&
-          error.code !== "rpc-unavailable" &&
-          error.code !== "factory-unavailable"
-        ) {
-          // Definitive on-chain verdict (missing/reverted receipt, no or
-          // mismatched factory event): drop the hint so later mounts stop
-          // chasing it. Transient RPC outages keep the hint for retry.
-          clearDeployResult();
+      const factories = [v1Factory, verifyFactory].filter(
+        (f): f is `0x${string}` => f !== null
+      );
+      let lastError: unknown = new DeployFlowError("factory-unavailable");
+      for (const factory of factories) {
+        try {
+          return await fetchAndVerifyDeployResult(
+            (hash) => testnetPublicClient.getTransactionReceipt({ hash }),
+            storedResult,
+            factory
+          );
+        } catch (error) {
+          lastError = error;
         }
-        if (error instanceof DeployFlowError) throw error;
-        throw new DeployFlowError("rpc-unavailable");
       }
+      if (
+        lastError instanceof DeployFlowError &&
+        lastError.code !== "rpc-unavailable" &&
+        lastError.code !== "factory-unavailable"
+      ) {
+        // Definitive on-chain verdict (missing/reverted receipt, no or
+        // mismatched factory event): drop the hint so later mounts stop
+        // chasing it. Transient RPC outages keep the hint for retry.
+        clearDeployResult();
+      }
+      if (lastError instanceof DeployFlowError) throw lastError;
+      throw new DeployFlowError("rpc-unavailable");
     },
-    enabled: !!storedResult && !!verifyFactory && machine.phase === "idle",
+    enabled: !!storedResult && (!!v1Factory || !!verifyFactory) && machine.phase === "idle",
     retry: false,
     staleTime: Infinity,
   });
@@ -872,8 +1061,18 @@ export function DeployFlow({
     !!storedResult && machine.phase === "idle" && verifyQuery.isPending;
   const resultUnverifiable =
     !!storedResult && machine.phase === "idle" && verifyQuery.isError;
+  // Display binding: the restored success panel (and its notices) appears
+  // only while the current draft still describes the hinted token. A new
+  // draft suppresses the stale hint instead of rendering it next to fresh
+  // review state. Verification + idempotent record retry above still run.
+  const displayedResult = storedResultMatchesDraft(storedResult, {
+    tokenName,
+    tokenSymbol,
+  })
+    ? storedResult
+    : null;
   const restoredToken: `0x${string}` | null =
-    storedResult && machine.phase === "idle" && verifyQuery.data
+    displayedResult && machine.phase === "idle" && verifyQuery.data
       ? verifyQuery.data.token
       : null;
   const devVerifyCode = resultUnverifiable
@@ -942,7 +1141,7 @@ export function DeployFlow({
       {/* Session recovery banner: never lost, never auto-resubmitted. */}
       {recovered &&
         machine.phase === "idle" &&
-        (!storedResult || resultUnverifiable) && (
+        (!displayedResult || resultUnverifiable) && (
         <div className="deploy-banner" role="status">
           <span className="deploy-banner-ic" aria-hidden="true">
             <i className="fa-solid fa-clock-rotate-left"></i>
@@ -1085,6 +1284,15 @@ export function DeployFlow({
                     <FeatureSummaryLabel id={id} />
                     {id === "maxTx" && feats.maxTx && <> — {maxTxPercent}% per transfer</>}
                     {id === "maxWallet" && feats.maxWallet && <> — {maxWalletPercent}% per wallet</>}
+                    {id === "mint" && feats.mint && (
+                      <> — {mintMode === "unlimited" ? "unlimited lifetime issuance" : `capped at ${maxSupplyHuman || "—"}`}</>
+                    )}
+                    {id === "trading" && feats.trading && (
+                      <> — buy {buyTaxBps} bps / sell {sellTaxBps} bps · marketing {shortenAddress(marketingWallet as `0x${string}`)}</>
+                    )}
+                    {id === "antiBot" && feats.antiBot && (
+                      <> — snipe window {snipeBlocks} blocks</>
+                    )}
                   </li>
                 ))}
                 {featureIds.length === 0 && <li className="deploy-muted">No add-ons selected</li>}
@@ -1099,12 +1307,12 @@ export function DeployFlow({
             </div>
           </div>
           <div className="deploy-panel deploy-card" aria-label="Deployment">
-            {restoredToken && storedResult && machine.phase === "idle" ? (
+            {restoredToken && displayedResult && machine.phase === "idle" ? (
               <SuccessPanel
-                name={storedResult.tokenName}
-                symbol={storedResult.tokenSymbol}
+                name={displayedResult.tokenName}
+                symbol={displayedResult.tokenSymbol}
                 token={restoredToken}
-                txHash={storedResult.txHash}
+                txHash={displayedResult.txHash}
                 copied={copied}
                 onCopy={copyText}
                 onCreateAnother={createAnotherToken}
@@ -1120,6 +1328,8 @@ export function DeployFlow({
                 onCopy={copyText}
                 onCreateAnother={createAnotherToken}
                 panelRef={successRef}
+                feePaidWei={paidInfo?.feeWei ?? (authPkg ? authPkg.feeWei.toString(10) : null)}
+                features={featureIds}
               />
             ) : (
               <>
@@ -1133,11 +1343,11 @@ export function DeployFlow({
                     re-reads the public receipt only — no wallet confirmation and no new
                     transaction.
                   </p>
-                  {storedResult && explorerTxUrl(storedResult.txHash) && (
+                  {displayedResult && explorerTxUrl(displayedResult.txHash) && (
                     <p className="deploy-muted">
                       <a
                         className="linklike"
-                        href={explorerTxUrl(storedResult.txHash) ?? ""}
+                        href={explorerTxUrl(displayedResult.txHash) ?? ""}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
@@ -1148,7 +1358,7 @@ export function DeployFlow({
                 </div>
               ) : (
                 <>
-              {resultUnverifiable ? (
+              {resultUnverifiable && displayedResult ? (
                 <p className="deploy-muted">
                   Previous deployment result could not be verified. Review your configuration
                   below — nothing will be sent automatically.
@@ -1216,10 +1426,23 @@ export function DeployFlow({
                     </dd>
                   </div>
                 ) : null}
-                <div>
-                  <dt>Testnet platform fee</dt>
-                  <dd>0 BNB</dd>
-                </div>
+                {usablePkg ? (
+                  <>
+                    <div>
+                      <dt>Authorized platform fee</dt>
+                      <dd>{formatWeiBnbDisplay(BigInt(usablePkg.feeWei))} BNB</dd>
+                    </div>
+                    <div>
+                      <dt>Authorization expires</dt>
+                      <dd>{new Date(Number(usablePkg.expiry) * 1000).toUTCString()}</dd>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <dt>Testnet platform fee</dt>
+                    <dd>0 BNB</dd>
+                  </div>
+                )}
                 <div>
                   <dt>Estimated network gas</dt>
                   <dd>
@@ -1326,12 +1549,38 @@ export function DeployFlow({
                     </button>
                   </span>
                 </div>
+              ) : !v1Factory ? (
+                <div className="deploy-error" role="status">
+                  <b>V1 factory not configured</b>
+                  <p>
+                    The final V1 deployment contract is not live on Testnet yet. Your
+                    configuration above is preserved — nothing was submitted and no
+                    transaction is possible from this screen until the factory is
+                    deployed.
+                  </p>
+                </div>
               ) : (
                   <>
+                    {!usablePkg && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-deploy"
+                        disabled={locked || !reviewValid || authLoading || !v1Factory}
+                        onClick={() => void requestAuthorization()}
+                        aria-describedby="deployHint"
+                      >
+                        {authLoading
+                          ? "Requesting authorization…"
+                          : authPkg
+                            ? "Authorization expired — request again"
+                            : "Request authorization"}
+                      </button>
+                    )}
+                    {usablePkg && (
                     <button
                       type="button"
                       className="btn btn-primary btn-deploy"
-                      disabled={locked || !reviewValid || !visibleQuote || gasFailed || !gasPreview}
+                      disabled={locked || !reviewValid || !gasPreview || gasFailed}
                       onClick={() => void startDeployment()}
                       aria-describedby="deployHint"
                     >
@@ -1343,16 +1592,22 @@ export function DeployFlow({
                             ? "Confirming…"
                             : "Deploy token"}
                     </button>
+                    )}
+                    {visibleAuthError && (
+                      <p className="deploy-muted" role="alert">
+                        Authorization failed ({visibleAuthError}). Check your configuration and request again — no transaction was submitted.
+                      </p>
+                    )}
                     <p className="deploy-muted" id="deployHint">
                       {!reviewValid
                         ? "Return to Create Token to complete the token details."
-                        : !visibleQuote
-                          ? "Waiting for the server price confirmation."
+                        : !usablePkg
+                          ? "Request a signed authorization first — it binds your exact configuration and fee, and expires shortly."
                           : !gasPreview
                             ? gasFailed
                               ? "The network fee could not be estimated — resolve it above before deploying."
                               : "Estimating the network fee."
-                            : "Your wallet will ask you to confirm one transaction. Testnet fee: 0 BNB + gas. The gas figure above is an estimate — your wallet sets the final network fee."}
+                            : "Your wallet will ask you to confirm one transaction for the exact authorized fee plus gas. The gas figure above is an estimate — your wallet sets the final network fee."}
                     </p>
                   </>
               )}

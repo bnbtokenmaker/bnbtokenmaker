@@ -150,6 +150,8 @@ describe("deployments — idempotency across JSONB key order (Phase 7A fix)", ()
       pricingVersion: "dev-2",
       totalWei: "99900000000000000",
       selectedFeatures: [],
+      paidBinding: null,
+      advancedConfig: null,
     };
     const second = await store.upsertDeployment(rerecord);
     assert.equal(second.inserted, false);

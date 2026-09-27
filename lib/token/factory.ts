@@ -25,6 +25,27 @@ function envFactoryAddress(): `0x${string}` | null {
   return /^0x[a-fA-F0-9]{40}$/.test(raw) ? (raw as `0x${string}`) : null;
 }
 
+/**
+ * Final V1 factory boundary (7D-E2).
+ *
+ * The frozen V1 factory (22-field TokenConfig + EIP-712 quote + value) is a
+ * DIFFERENT contract from the legacy Phase 6B testnet factory: the old
+ * factory MUST NEVER be silently used for V1 calls. This resolves the V1
+ * factory address per chain, or null when not configured (7D-F deploys it).
+ * Chain 56 is hard-disabled here regardless of configuration.
+ */
+export const V1_FACTORY_CHAIN_ID = 97;
+
+function envV1FactoryAddress(): `0x${string}` | null {
+  const raw = (process.env.NEXT_PUBLIC_V1_FACTORY_ADDRESS ?? "").trim();
+  return /^0x[a-fA-F0-9]{40}$/.test(raw) ? (raw as `0x${string}`) : null;
+}
+
+export function v1FactoryAddress(chainId: number | null | undefined): `0x${string}` | null {
+  if (chainId !== V1_FACTORY_CHAIN_ID) return null;
+  return envV1FactoryAddress();
+}
+
 export function factoryAddress(
   chainId: number | null | undefined
 ): `0x${string}` | null {
@@ -111,4 +132,63 @@ export function explorerTokenUrl(
   if (chainId !== PHASE6B_CHAIN_ID) return null;
   if (!/^0x[a-fA-F0-9]{40}$/.test(token)) return null;
   return `${explorer}/token/${token}`;
+}
+
+export type DeploymentPaidEvent = {
+  token: `0x${string}`;
+  payer: `0x${string}`;
+  feeWei: bigint;
+  pricingVersion: `0x${string}`;
+  nonce: `0x${string}`;
+};
+
+function asBytes32(value: unknown): `0x${string}` | null {
+  return typeof value === "string" && /^0x[a-fA-F0-9]{64}$/.test(value)
+    ? (value as `0x${string}`)
+    : null;
+}
+
+/** Decode a DeploymentPaid log (payment audit trail) into typed data. */
+export function parseDeploymentPaidLog(log: {
+  topics: readonly [`0x${string}`, ...`0x${string}`[]];
+  data: `0x${string}`;
+}): DeploymentPaidEvent | null {
+  let decoded: {
+    eventName: string;
+    args: Record<string, string | number | bigint | undefined>;
+  };
+  try {
+    decoded = decodeEventLog({
+      abi: factoryAbi as never,
+      topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
+      data: log.data,
+      strict: true,
+    }) as unknown as {
+      eventName: string;
+      args: Record<string, string | number | bigint | undefined>;
+    };
+  } catch {
+    return null;
+  }
+  if (decoded.eventName !== "DeploymentPaid") return null;
+  const token = asAddress(decoded.args.token);
+  const payer = asAddress(decoded.args.payer);
+  const pricingVersion = asBytes32(decoded.args.pricingVersion);
+  const nonce = asBytes32(decoded.args.nonce);
+  if (
+    !token ||
+    !payer ||
+    typeof decoded.args.feeWei !== "bigint" ||
+    !pricingVersion ||
+    !nonce
+  ) {
+    return null;
+  }
+  return {
+    token,
+    payer,
+    feeWei: decoded.args.feeWei,
+    pricingVersion,
+    nonce,
+  };
 }

@@ -39,9 +39,13 @@ const FEE_LABELS: ReadonlyArray<{ key: string; label: string }> = [
   { key: "maxWallet", label: "Max wallet" },
   { key: "blacklist", label: "Blacklist" },
   { key: "whitelist", label: "Whitelist" },
+  { key: "trading", label: "Trading fees" },
+  { key: "antiBot", label: "Anti-bot" },
+  { key: "autoLiquidity", label: "Auto-liquidity" },
 ];
 
-function weiToBnbText(wei: string): string {
+function weiToBnbText(wei: string | null): string {
+  if (wei === null) return "Not offered";
   try {
     return `${formatWeiBnb(BigInt(wei))} BNB`;
   } catch {
@@ -52,12 +56,13 @@ function weiToBnbText(wei: string): string {
 function feeOf(
   row: {
     baseFeeWei: string;
-    featureFees: Record<string, string>;
+    featureFees: Record<string, string | null>;
   },
   key: string
-): string {
+): string | null {
   if (key === "base") return row.baseFeeWei;
-  return row.featureFees[key] ?? "0";
+  // NULL (not offered) is preserved — never displayed as zero.
+  return row.featureFees[key] ?? null;
 }
 
 export default async function AdminPricingPage() {
@@ -75,14 +80,14 @@ export default async function AdminPricingPage() {
     activeRow: {
       version: string;
       baseFeeWei: string;
-      featureFees: Record<string, string>;
+      featureFees: Record<string, string | null>;
       activatedAt: string | null;
     } | null;
     versions: Array<{
       version: string;
       status: string;
       baseFeeWei: string;
-      featureFees: Record<string, string>;
+      featureFees: Record<string, string | null>;
       createdAt: string;
       activatedAt: string | null;
     }>;
@@ -115,6 +120,9 @@ export default async function AdminPricingPage() {
               maxWallet: activeRow.maxWalletFeeWei,
               blacklist: activeRow.blacklistFeeWei,
               whitelist: activeRow.whitelistFeeWei,
+              trading: activeRow.tradingFeeWei,
+              antiBot: activeRow.antibotFeeWei,
+              autoLiquidity: activeRow.autoliquidityFeeWei,
             },
             activatedAt: activeRow.activatedAt
               ? activeRow.activatedAt.toISOString()
@@ -133,6 +141,9 @@ export default async function AdminPricingPage() {
           maxWallet: row.maxWalletFeeWei,
           blacklist: row.blacklistFeeWei,
           whitelist: row.whitelistFeeWei,
+          trading: row.tradingFeeWei,
+          antiBot: row.antibotFeeWei,
+          autoLiquidity: row.autoliquidityFeeWei,
         },
         createdAt: row.createdAt.toISOString(),
         activatedAt: row.activatedAt ? row.activatedAt.toISOString() : null,
@@ -162,19 +173,29 @@ export default async function AdminPricingPage() {
   }
 
   const current = snapshot.activeRow;
-  const presetTotals = current
-    ? {
-        standard: current.baseFeeWei,
-        mintable: (
-          BigInt(current.baseFeeWei) + BigInt(current.featureFees.mint)
-        ).toString(),
-        community: (
-          BigInt(current.baseFeeWei) +
-          BigInt(current.featureFees.maxTx) +
-          BigInt(current.featureFees.maxWallet)
-        ).toString(),
-      }
-    : null;
+  const reqFee = (value: string | null | undefined): bigint | null => {
+    if (typeof value !== "string") return null;
+    try {
+      return BigInt(value);
+    } catch {
+      return null;
+    }
+  };
+  const presetTotals = (() => {
+    if (!current) return null;
+    const base = reqFee(current.baseFeeWei);
+    const mint = reqFee(current.featureFees.mint);
+    const maxTx = reqFee(current.featureFees.maxTx);
+    const maxWallet = reqFee(current.featureFees.maxWallet);
+    if (base === null || mint === null || maxTx === null || maxWallet === null) {
+      return null;
+    }
+    return {
+      standard: base.toString(),
+      mintable: (base + mint).toString(),
+      community: (base + maxTx + maxWallet).toString(),
+    };
+  })();
 
   return (
     <AdminShell identifier={access.identifier} active="pricing">
@@ -259,13 +280,16 @@ export default async function AdminPricingPage() {
             current
               ? {
                   base: formatWeiBnb(BigInt(current.baseFeeWei)),
-                  burn: formatWeiBnb(BigInt(current.featureFees.burn)),
-                  mint: formatWeiBnb(BigInt(current.featureFees.mint)),
-                  pause: formatWeiBnb(BigInt(current.featureFees.pause)),
-                  maxTx: formatWeiBnb(BigInt(current.featureFees.maxTx)),
-                  maxWallet: formatWeiBnb(BigInt(current.featureFees.maxWallet)),
-                  blacklist: formatWeiBnb(BigInt(current.featureFees.blacklist)),
-                  whitelist: formatWeiBnb(BigInt(current.featureFees.whitelist)),
+                  burn: formatWeiBnb(BigInt(current.featureFees.burn as string)),
+                  mint: formatWeiBnb(BigInt(current.featureFees.mint as string)),
+                  pause: formatWeiBnb(BigInt(current.featureFees.pause as string)),
+                  maxTx: formatWeiBnb(BigInt(current.featureFees.maxTx as string)),
+                  maxWallet: formatWeiBnb(BigInt(current.featureFees.maxWallet as string)),
+                  blacklist: formatWeiBnb(BigInt(current.featureFees.blacklist as string)),
+                  whitelist: formatWeiBnb(BigInt(current.featureFees.whitelist as string)),
+                  trading: current.featureFees.trading === null ? null : formatWeiBnb(BigInt(current.featureFees.trading)),
+                  antiBot: current.featureFees.antiBot === null ? null : formatWeiBnb(BigInt(current.featureFees.antiBot)),
+                  autoLiquidity: current.featureFees.autoLiquidity === null ? null : formatWeiBnb(BigInt(current.featureFees.autoLiquidity)),
                 }
               : null
           }

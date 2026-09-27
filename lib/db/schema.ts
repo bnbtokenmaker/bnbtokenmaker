@@ -113,13 +113,18 @@ export const adminSessions = pgTable("admin_sessions", {
 export type AdminSessionRow = typeof adminSessions.$inferSelect;
 
 /**
- * Phase 7C pricing versions (mirrors db/migrations/0003).
+ * Phase 7C pricing versions (mirrors db/migrations/0003) with the Phase
+ * 7D-E1 V1 capability columns (mirrors db/migrations/0004).
  *
  * Published versions are IMMUTABLE rows: an admin price update inserts a NEW
  * row and atomically flips the single active pointer (partial unique index
  * `pricing_versions_single_active`). Historical rows are never rewritten, so
  * deployment quote snapshots stay stable. SQL is authoritative for DDL; the
  * version identifier is assigned database-side ('v' || nextval).
+ *
+ * NULLABILITY: the three V1 capability columns are NULLABLE — NULL means
+ * "capability not offered in this pricing version" (all pre-migration rows
+ * read NULL). Admin publish requires all eleven fees.
  */
 export const pricingVersions = pgTable("pricing_versions", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
@@ -135,6 +140,12 @@ export const pricingVersions = pgTable("pricing_versions", {
   maxWalletFeeWei: text("maxwallet_fee_wei").notNull(),
   blacklistFeeWei: text("blacklist_fee_wei").notNull(),
   whitelistFeeWei: text("whitelist_fee_wei").notNull(),
+  /** NULL = trading capability not offered in this version. */
+  tradingFeeWei: text("trading_fee_wei"),
+  /** NULL = anti-bot capability not offered in this version. */
+  antibotFeeWei: text("antibot_fee_wei"),
+  /** NULL = auto-liquidity capability not offered in this version. */
+  autoliquidityFeeWei: text("autoliquidity_fee_wei"),
   createdByAdminId: bigint("created_by_admin_id", { mode: "number" }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

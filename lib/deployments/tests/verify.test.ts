@@ -176,19 +176,138 @@ describe("deployments — server-side receipt/event verification", () => {
     );
   });
 
-  it("rejects non-zero-value deployment transactions", async () => {
-    await rejectsWith(
-      verifyWith({ tx: { ...TX_OK, value: 1n }, receipt: RECEIPT_OK }),
-      "nonzero-value"
-    );
+  it("accepts value-bearing V1 transactions (value is the fee fact)", async () => {
+    const record = await verifyWith({
+      tx: { ...TX_OK, value: 50000n },
+      receipt: RECEIPT_OK,
+    });
+    assert.equal(record.platformFeeWei, "50000");
+    assert.equal(record.quoteSnapshot.paidBinding, null);
+    assert.equal(record.quoteSnapshot.advancedConfig, null);
+  });
+
+  describe("DeploymentPaid reconciliation (V1 factory)", () => {
+    const FEE = 50000n;
+    const VERSION = ("0x" + "ab".repeat(32)) as `0x${string}`;
+    const NONCE = ("0x" + "cd".repeat(32)) as `0x${string}`;
+
+    function paidLog(overrides: {
+      token?: `0x${string}`;
+      payer?: `0x${string}`;
+      fee?: bigint;
+      version?: `0x${string}`;
+      nonce?: `0x${string}`;
+    } = {}) {
+      const topic0 = keccak256(
+        stringToHex("DeploymentPaid(address,address,uint256,bytes32,bytes32)")
+      );
+      const data = encodeAbiParameters(
+        [{ type: "uint256" }, { type: "bytes32" }],
+        [overrides.fee ?? FEE, overrides.version ?? VERSION]
+      );
+      return {
+        address: FACTORY,
+        topics: [
+          topic0,
+          pad(overrides.token ?? TOKEN),
+          pad(overrides.payer ?? DEPLOYER),
+          pad(overrides.nonce ?? NONCE),
+        ] as [`0x${string}`, ...`0x${string}`[]],
+        data,
+      };
+    }
+
+    function receiptWithPaid(paid: ReturnType<typeof paidLog>) {
+      return {
+        ...RECEIPT_OK,
+        logs: [tokenCreatedLog(TOKEN, FACTORY), paid],
+      };
+    }
+
+    it("persists the payment attestation when present and consistent", async () => {
+      const record = await verifyWith({
+        tx: { ...TX_OK, value: FEE },
+        receipt: receiptWithPaid(paidLog()),
+      });
+      assert.deepEqual(record.quoteSnapshot.paidBinding, {
+        feeWei: FEE.toString(10),
+        pricingVersion: VERSION,
+        nonce: NONCE,
+      });
+      assert.equal(record.platformFeeWei, FEE.toString(10));
+    });
+
+    it("rejects fee mismatch between attestation and tx value", async () => {
+      await rejectsWith(
+        verifyWith({
+          tx: { ...TX_OK, value: FEE + 1n },
+          receipt: receiptWithPaid(paidLog()),
+        }),
+        "fee-mismatch"
+      );
+    });
+
+    it("rejects token/payer mismatch in the attestation", async () => {
+      await rejectsWith(
+        verifyWith({
+          tx: { ...TX_OK, value: FEE },
+          receipt: receiptWithPaid(paidLog({ token: OTHER })),
+        }),
+        "fee-mismatch"
+      );
+      await rejectsWith(
+        verifyWith({
+          tx: { ...TX_OK, value: FEE },
+          receipt: receiptWithPaid(paidLog({ payer: OTHER })),
+        }),
+        "fee-mismatch"
+      );
+    });
+
+    it("reads advanced scalar views when the reader provides them", async () => {
+      const views = {
+        buyTaxBps: "400",
+        sellTaxBps: "600",
+        marketingWallet: DEPLOYER,
+        marketingShareBps: "7000",
+        liquidityShareBps: "3000",
+        autoLiquidityEnabled: true,
+        swapThresholdBase: "1000",
+        antiBotEnabled: true,
+        snipeBlocks: "10",
+        maxSupplyBase: "10000000",
+      };
+      const record = await verifyDeployment({
+        hint: parseRecordHint({ chainId: 97, txHash: TX }),
+        chain: {
+          ...reader({ tx: TX_OK, receipt: RECEIPT_OK }),
+          getTokenViews: async () => views,
+        },
+        expectedFactory: FACTORY as `0x${string}`,
+        quoteForFeatures: QUOTE,
+      });
+      assert.deepEqual(record.quoteSnapshot.advancedConfig, views);
+    });
+
+    it("records null advanced config when views are unavailable", async () => {
+      const record = await verifyDeployment({
+        hint: parseRecordHint({ chainId: 97, txHash: TX }),
+        chain: {
+          ...reader({ tx: TX_OK, receipt: RECEIPT_OK }),
+          getTokenViews: async () => null,
+        },
+        expectedFactory: FACTORY as `0x${string}`,
+        quoteForFeatures: QUOTE,
+      });
+      assert.equal(record.quoteSnapshot.advancedConfig, null);
+    });
   });
 
   it("rejects malformed tx hashes at the hint boundary", () => {
     assert.throws(() => parseRecordHint({ chainId: 97, txHash: "0x123" }));
   });
 
-  it("sanitizes raw RPC errors (no provider text leaks)", async () => {
-    const raw = new Error("secret-rpc-endpoint exploded: ECONNREFUSED 10.0.0.9");
+  it("sanitizes raw RPC errors (no provider text leaks)", async () => {    const raw = new Error("secret-rpc-endpoint exploded: ECONNREFUSED 10.0.0.9");
     try {
       await verifyWith({ tx: raw, receipt: RECEIPT_OK });
       assert.fail("expected throw");
