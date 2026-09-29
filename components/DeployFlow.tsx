@@ -4,16 +4,18 @@
  * Phase 7D-E2 deployment flow: REVIEW → AUTHORIZE → VALIDATE → WALLET →
  * BROADCAST → RECEIPT against the frozen V1 factory.
  *
+ * Dual-chain: supports BSC Mainnet (56) and BSC Testnet (97).
+ * The intended chain is set by the parent component (production = 56, testnet = 97).
+ *
  * Security posture (mirrors Phase 6A/6B, no new wallet logic):
  * - No automatic network switching: no wallet_switchEthereumChain /
  *   wallet_addEthereumChain calls anywhere in this file.
  * - Immediately before the transaction, the session-pinned provider is
  *   re-verified (same object, expected account, fresh eth_chainId) and the
- *   live chain must be exactly 97. Cached wagmi/UI state never authorizes.
- * - Mainnet (or any non-97 chain) renders preview-only: no transaction path.
- * - The V1 factory address is resolved from explicit configuration; when
- *   unset, deployment is unavailable (fail-closed) — the legacy Phase 6B
- *   factory is NEVER silently substituted for V1 calls.
+ *   live chain must match the intended chain. Cached wagmi/UI state never authorizes.
+ * - The V1 factory address is resolved from explicit configuration for the
+ *   intended chain; when unset, deployment is unavailable (fail-closed) —
+ *   the legacy Phase 6B factory is NEVER silently substituted for V1 calls.
  * - Money comes only from the signed EIP-712 authorization (exact
  *   msg.value = feeWei); gas is estimated via the real factory call and
  *   always displayed separately.
@@ -37,7 +39,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { createPublicClient, http } from "viem";
-import { bscTestnet } from "viem/chains";
+import { bsc, bscTestnet } from "viem/chains";
 
 import { useWalletNetwork } from "./wallet/useWalletNetwork";
 import { useWalletUI } from "./wallet/WalletUI";
@@ -120,13 +122,25 @@ import {
   type PendingDeployment,
 } from "../lib/deploy/tx";
 import { requestDeploymentRecord } from "../lib/deploy/record-client";
+import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID, isSupportedV1ChainId } from "../lib/deploy/chains";
 
 const RECEIPT_TIMEOUT_MS = 120_000;
+
+const mainnetPublicClient = createPublicClient({
+  chain: bsc,
+  transport: http(),
+});
 
 const testnetPublicClient = createPublicClient({
   chain: bscTestnet,
   transport: http(),
 });
+
+function publicClientForChain(chainId: number) {
+  if (chainId === BSC_MAINNET_CHAIN_ID) return mainnetPublicClient;
+  if (chainId === BSC_TESTNET_CHAIN_ID) return testnetPublicClient;
+  return null;
+}
 
 export type DeployFlowProps = {
   tokenName: string;
@@ -136,6 +150,8 @@ export type DeployFlowProps = {
   feats: FeatureSelection;
   maxTxPercent: string;
   maxWalletPercent: string;
+  /** Intended deployment chain (56 for mainnet, 97 for testnet). */
+  intendedChainId: number;
   /** V1 additions (optional for backward compat with pre-V1 drafts). */
   mintMode?: "capped" | "unlimited";
   maxSupplyHuman?: string;
@@ -355,6 +371,7 @@ export function DeployFlow({
   feats,
   maxTxPercent,
   maxWalletPercent,
+  intendedChainId,
   mintMode = "capped",
   maxSupplyHuman = "",
   buyTaxBps = "4",
@@ -385,8 +402,8 @@ export function DeployFlow({
   const recordServerSide = useCallback((txHash: `0x${string}`) => {
     if (recordedRef.current.has(txHash)) return;
     recordedRef.current.add(txHash);
-    void requestDeploymentRecord(txHash);
-  }, []);
+    void requestDeploymentRecord(intendedChainId, txHash);
+  }, [intendedChainId]);
   // V1 authorization lifecycle: a package is valid only for the exact
   // fingerprint it was issued for; ANY form/account change discards it.
   const [authPkg, setAuthPkg] = useState<ParsedDeploymentPackage | null>(null);
@@ -408,9 +425,11 @@ export function DeployFlow({
   const featureIds = useMemo(() => selectedFeatureIds(feats), [feats]);
   const onTestnet = isConnected && network.status === "testnet";
   const onMainnet = isConnected && network.status === "mainnet";
-  // V1 factory boundary: null until 7D-F deploys the frozen V1 factory.
-  // Chain 56 is hard-disabled inside v1FactoryAddress regardless.
-  const v1Factory = v1FactoryAddress(97);
+  const intendedChainSupported = isSupportedV1ChainId(intendedChainId);
+  const onIntendedChain = isConnected && network.chainId === intendedChainId;
+  // V1 factory boundary: resolved for the intended chain only.
+  // No cross-chain fallback. Unsupported chains return null (fail closed).
+  const v1Factory = v1FactoryAddress(intendedChainId);
 
   // V1 form assembly from draft-carried props (review + authorize input).
   const v1Form: V1FormState = {
@@ -445,16 +464,16 @@ export function DeployFlow({
   );
   const reviewInput: AuthorizeTokenInput | null = v1Review.ok ? v1Review.input : null;
   const reviewValid =
-    v1Review.ok && !(feats.blacklist && feats.whitelist) && onTestnet;
+    v1Review.ok && !(feats.blacklist && feats.whitelist) && onIntendedChain;
 
   const fingerprint = useMemo(() => {
     if (!reviewInput) return null;
     return authorizationFingerprint({
       token: reviewInput,
-      chainId: 97,
+      chainId: intendedChainId,
       account: address ?? null,
     });
-  }, [reviewInput, address]);
+  }, [reviewInput, address, intendedChainId]);
 
   const dispatch = useCallback((event: DeployEvent) => {
     try {
@@ -479,9 +498,9 @@ export function DeployFlow({
   // by React Query: no fetch-in-effect, cached per feature selection. The
   // AUTHORITATIVE fee arrives with the signed package (see below).
   const quoteQuery = useQuery({
-    queryKey: ["deploy-quote", ...featureIds],
+    queryKey: ["deploy-quote", intendedChainId, ...featureIds],
     queryFn: () => fetchAuthoritativeQuote(featureIds),
-    enabled: onTestnet || onMainnet,
+    enabled: onIntendedChain,
     retry: 1,
   });
   const refreshQuote = useCallback(() => {
@@ -489,7 +508,7 @@ export function DeployFlow({
   }, [quoteQuery]);
   // Quotes are only meaningful while connected to a known chain; stale data
   // from a previous connection is never rendered or used for gating.
-  const quoteActive = onTestnet || onMainnet;
+  const quoteActive = onIntendedChain;
   const visibleQuote: AuthoritativeQuote | null = quoteActive
     ? (quoteQuery.data ?? null)
     : null;
@@ -525,7 +544,7 @@ export function DeployFlow({
       const response = await fetch("/api/deployments/authorize", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: authorizeInputToJson(reviewInput), chainId: 97 }),
+        body: JSON.stringify({ token: authorizeInputToJson(reviewInput), chainId: intendedChainId }),
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as {
@@ -540,7 +559,7 @@ export function DeployFlow({
         package?: unknown;
       } | null;
       const pkg = parseDeploymentPackage(body?.package);
-      if (pkg.factory.toLowerCase() !== v1Factory.toLowerCase() || pkg.chainId !== 97) {
+      if (pkg.factory.toLowerCase() !== v1Factory.toLowerCase() || pkg.chainId !== intendedChainId) {
         throw new DeployFlowError("authorization-failed", "factory-mismatch");
       }
       if (!isPackageOwnerMatch(pkg.token.owner, address)) {
@@ -548,7 +567,7 @@ export function DeployFlow({
       }
       setAuthPkg(pkg);
       setAuthFingerprint(fingerprint);
-      trackCreateEvent({ name: "authorization_received", chainId: 97 }, window.gtag);
+      trackCreateEvent({ name: "authorization_received", chainId: intendedChainId }, window.gtag);
     } catch (error) {
       if (error instanceof DeployFlowError) {
         setAuthError({ fingerprint, code: error.code });
@@ -560,7 +579,7 @@ export function DeployFlow({
     } finally {
       setAuthLoading(false);
     }
-  }, [authLoading, isConnected, address, reviewInput, fingerprint, v1Factory, featureIds]);
+  }, [authLoading, isConnected, address, reviewInput, fingerprint, v1Factory, featureIds, intendedChainId]);
 
   // Gas preview for REVIEW: eth_call simulation + estimate on the EXACT
   // authorized payload (calldata + fee value). A reverted simulation or a
@@ -569,6 +588,7 @@ export function DeployFlow({
   const gasQuery = useQuery({
     queryKey: [
       "deploy-gas",
+      intendedChainId,
       fingerprint,
       usablePkg?.configHash ?? null,
       address?.toLowerCase() ?? null,
@@ -576,6 +596,8 @@ export function DeployFlow({
     queryFn: async (): Promise<GasSnapshot> => {
       if (!address) throw new DeployFlowError("wallet-disconnected");
       if (!usablePkg || !v1Factory) throw new DeployFlowError("authorization-failed");
+      const client = publicClientForChain(intendedChainId);
+      if (!client) throw new DeployFlowError("wrong-network");
       const account = address as `0x${string}`;
       const { data, valueHex } = packageToCalldata({
         token: usablePkg.token,
@@ -592,7 +614,7 @@ export function DeployFlow({
       });
       const value = BigInt(valueHex);
       try {
-        await testnetPublicClient.call({
+        await client.call({
           account,
           to: v1Factory,
           data,
@@ -604,9 +626,9 @@ export function DeployFlow({
       }
       try {
         const [estimate, gasPrice, balance] = await Promise.all([
-          testnetPublicClient.estimateGas({ account, to: v1Factory, data, value }),
-          testnetPublicClient.getGasPrice(),
-          testnetPublicClient.getBalance({ address: account }),
+          client.estimateGas({ account, to: v1Factory, data, value }),
+          client.getGasPrice(),
+          client.getBalance({ address: account }),
         ]);
         if (balance < value + estimate * gasPrice) {
           throw new DeployFlowError("insufficient-gas-funds");
@@ -623,7 +645,7 @@ export function DeployFlow({
       }
     },
     enabled: isGasEstimateReady({
-      onTestnet,
+      onTestnet: onIntendedChain,
       address: address ?? null,
       hasQuote: !!visibleQuote,
       reviewValid,
@@ -638,9 +660,9 @@ export function DeployFlow({
   // report neutral (—), not a failure. Real estimate failures after a usable
   // package exists still surface via gasFailed.
   const gasPreview: GasSnapshot | null =
-    onTestnet && reviewValid ? (gasQuery.data ?? null) : null;
-  const gasLoading = onTestnet && reviewValid && !!usablePkg && gasQuery.isPending;
-  const gasFailed = onTestnet && reviewValid && !!usablePkg && gasQuery.isError;
+    onIntendedChain && reviewValid ? (gasQuery.data ?? null) : null;
+  const gasLoading = onIntendedChain && reviewValid && !!usablePkg && gasQuery.isPending;
+  const gasFailed = onIntendedChain && reviewValid && !!usablePkg && gasQuery.isError;
   // Development-only diagnostics: sanitized error codes behind failed
   // quote/gas fetches. Null in production, so production UI is unchanged.
   const devQuoteCode = quoteFailed
@@ -669,7 +691,9 @@ export function DeployFlow({
       token: `0x${string}`;
       paid: { feeWei: string; pricingVersion: `0x${string}`; nonce: `0x${string}` } | null;
     }> => {
-      const receipt = await testnetPublicClient.waitForTransactionReceipt({
+      const client = publicClientForChain(intendedChainId);
+      if (!client) throw new DeployFlowError("wrong-network");
+      const receipt = await client.waitForTransactionReceipt({
         hash: txHash,
         timeout: RECEIPT_TIMEOUT_MS,
       });
@@ -681,9 +705,6 @@ export function DeployFlow({
       if (!token) {
         throw new DeployFlowError("event-missing");
       }
-      // V1 payment verification: the DeploymentPaid attestation must match
-      // the created token, the payer and the exact authorized fee. Legacy
-      // receipts without the event keep the informational path.
       const paid = findDeploymentPaid(logs);
       if (paid) {
         if (
@@ -704,7 +725,7 @@ export function DeployFlow({
       }
       return { token, paid: null };
     },
-    []
+    [intendedChainId]
   );
 
   /** Full pre-transaction gate (V1). Throws DeployFlowError / Phase6b faults only. */
@@ -750,8 +771,11 @@ export function DeployFlow({
     let liveChainId: number;
     try {
       liveChainId = verified.chainId;
-      assertPhase6bChain(liveChainId, network.chainId);
+      if (!isSupportedV1ChainId(liveChainId)) {
+        throw new DeployFlowError("wrong-network");
+      }
     } catch (error) {
+      if (error instanceof DeployFlowError) throw error;
       if (error instanceof Phase6bDeploymentError) {
         if (error.reason === "chain-not-allowed" || error.reason === "stale-chain") {
           throw new DeployFlowError("wrong-network");
@@ -760,7 +784,7 @@ export function DeployFlow({
       }
       throw error;
     }
-    if (liveChainId !== 97) {
+    if (liveChainId !== intendedChainId) {
       throw new DeployFlowError("wrong-network");
     }
     const deployer = address.toLowerCase() as `0x${string}`;
@@ -804,12 +828,14 @@ export function DeployFlow({
       signature: pkg.signature,
     });
     const feeWei = BigInt(valueHex);
+      const client = publicClientForChain(intendedChainId);
+      if (!client) throw new DeployFlowError("wrong-network");
     // Simulation + gas on the exact payload about to be sent.
     let estimate: bigint;
     let gasPrice: bigint;
     let balance: bigint;
     try {
-      await testnetPublicClient.call({
+      await client.call({
         account: deployer,
         to: v1Factory,
         data,
@@ -821,9 +847,9 @@ export function DeployFlow({
     }
     try {
       [estimate, gasPrice, balance] = await Promise.all([
-        testnetPublicClient.estimateGas({ account: deployer, to: v1Factory, data, value: feeWei }),
-        testnetPublicClient.getGasPrice(),
-        testnetPublicClient.getBalance({ address: deployer }),
+        client.estimateGas({ account: deployer, to: v1Factory, data, value: feeWei }),
+        client.getGasPrice(),
+        client.getBalance({ address: deployer }),
       ]);
     } catch {
       throw new DeployFlowError("gas-estimate-failed");
@@ -837,6 +863,7 @@ export function DeployFlow({
     address,
     connector,
     network.chainId,
+    intendedChainId,
     authPkg,
     authFingerprint,
     fingerprint,
@@ -868,7 +895,7 @@ export function DeployFlow({
         });
         setRecovered(null);
         dispatch({ type: "RECEIPT_OK" });
-        trackCreateEvent({ name: "deployment_confirmed", chainId: 97 }, window.gtag);
+        trackCreateEvent({ name: "deployment_confirmed", chainId: intendedChainId }, window.gtag);
         // Best-effort server record AFTER confirmed success. Fire-and-forget:
         // recording failure never converts this success into a failure.
         recordServerSide(txHash);
@@ -881,7 +908,7 @@ export function DeployFlow({
         });
       }
     },
-    [dispatch, waitForReceipt, tokenName, tokenSymbol, recordServerSide]
+    [dispatch, waitForReceipt, tokenName, tokenSymbol, recordServerSide, intendedChainId]
   );
 
   const startDeployment = useCallback(async () => {
@@ -915,7 +942,7 @@ export function DeployFlow({
       }
       dispatch({ type: "VALID_OK" });
       let txHash: unknown;
-      trackCreateEvent({ name: "deployment_submitted", chainId: 97 }, window.gtag);
+      trackCreateEvent({ name: "deployment_submitted", chainId: intendedChainId }, window.gtag);
       try {
         txHash = await gates.provider.request({
           method: "eth_sendTransaction",
@@ -924,7 +951,6 @@ export function DeployFlow({
               from: gates.deployer,
               to: gates.factory,
               data: gates.data,
-              // Exact authorized fee — never underpaid, never overpaid.
               value: gates.valueHex,
             },
           ],
@@ -947,7 +973,7 @@ export function DeployFlow({
       }
       savePendingDeployment({
         txHash,
-        chainId: PHASE6B_CHAIN_ID,
+        chainId: intendedChainId,
         name: tokenName.trim(),
         symbol: tokenSymbol.trim().toUpperCase(),
         savedAt: Date.now(),
@@ -958,7 +984,7 @@ export function DeployFlow({
     } finally {
       attemptLock.current = false;
     }
-  }, [machine, dispatch, runPreTransactionGates, trackReceipt, tokenName, tokenSymbol]);
+  }, [machine, dispatch, runPreTransactionGates, trackReceipt, tokenName, tokenSymbol, intendedChainId]);
 
   const recheckSubmitted = useCallback(async () => {
     if (machine.phase !== "error" || !machine.txHash) return;
@@ -1018,49 +1044,39 @@ export function DeployFlow({
   // receipt + factory event. No wallet, no send path anywhere in this flow.
   // V1 factory is tried first, then the legacy factory (older deployments).
   const [storedResult] = useState<DeployResultV1 | null>(() => loadDeployResult());
-  const verifyFactory = factoryAddress(PHASE6B_CHAIN_ID);
+  const verifyFactory = v1FactoryAddress(intendedChainId);
   const verifyQuery = useQuery({
-    queryKey: ["deploy-result-verify", storedResult?.txHash ?? null],
+    queryKey: ["deploy-result-verify", intendedChainId, storedResult?.txHash ?? null],
     queryFn: async (): Promise<VerifiedDeployment> => {
-      if (!storedResult || (!v1Factory && !verifyFactory)) {
+      if (!storedResult || !verifyFactory) {
         throw new DeployFlowError("factory-unavailable");
       }
-      const factories = [v1Factory, verifyFactory].filter(
-        (f): f is `0x${string}` => f !== null
-      );
-      let lastError: unknown = new DeployFlowError("factory-unavailable");
-      for (const factory of factories) {
-        try {
-          return await fetchAndVerifyDeployResult(
-            (hash) => testnetPublicClient.getTransactionReceipt({ hash }),
-            storedResult,
-            factory
-          );
-        } catch (error) {
-          lastError = error;
+      const client = publicClientForChain(intendedChainId);
+      if (!client) throw new DeployFlowError("wrong-network");
+      try {
+        return await fetchAndVerifyDeployResult(
+          (hash) => client.getTransactionReceipt({ hash }),
+          storedResult,
+          verifyFactory
+        );
+      } catch (error) {
+        if (error instanceof DeployFlowError) {
+          if (error.code !== "rpc-unavailable" && error.code !== "factory-unavailable") {
+            clearDeployResult();
+          }
+          throw error;
         }
+        throw new DeployFlowError("rpc-unavailable");
       }
-      if (
-        lastError instanceof DeployFlowError &&
-        lastError.code !== "rpc-unavailable" &&
-        lastError.code !== "factory-unavailable"
-      ) {
-        // Definitive on-chain verdict (missing/reverted receipt, no or
-        // mismatched factory event): drop the hint so later mounts stop
-        // chasing it. Transient RPC outages keep the hint for retry.
-        clearDeployResult();
-      }
-      if (lastError instanceof DeployFlowError) throw lastError;
-      throw new DeployFlowError("rpc-unavailable");
     },
-    enabled: !!storedResult && (!!v1Factory || !!verifyFactory) && machine.phase === "idle",
+    enabled: !!storedResult && !!verifyFactory && machine.phase === "idle",
     retry: false,
     staleTime: Infinity,
   });
   const verifyingResult =
-    !!storedResult && machine.phase === "idle" && verifyQuery.isPending;
+    !!storedResult && machine.phase === "idle" && verifyQuery.isPending && !!verifyFactory;
   const resultUnverifiable =
-    !!storedResult && machine.phase === "idle" && verifyQuery.isError;
+    !!storedResult && machine.phase === "idle" && verifyQuery.isError && !!verifyFactory;
   // Display binding: the restored success panel (and its notices) appears
   // only while the current draft still describes the hinted token. A new
   // draft suppresses the stale hint instead of rendering it next to fresh
@@ -1072,7 +1088,7 @@ export function DeployFlow({
     ? storedResult
     : null;
   const restoredToken: `0x${string}` | null =
-    displayedResult && machine.phase === "idle" && verifyQuery.data
+    displayedResult && machine.phase === "idle" && verifyQuery.data && !!verifyFactory
       ? verifyQuery.data.token
       : null;
   const devVerifyCode = resultUnverifiable
@@ -1131,7 +1147,7 @@ export function DeployFlow({
     validating: "Validating deployment",
     awaiting_wallet: "Waiting for wallet confirmation",
     broadcasting: "Transaction submitted",
-    confirming: "Confirming on BNB Smart Chain Testnet",
+    confirming: intendedChainId === BSC_MAINNET_CHAIN_ID ? "Confirming on BNB Smart Chain" : "Confirming on BNB Smart Chain Testnet",
     success: "Token deployed successfully",
     error: errorInfo?.title ?? "Deployment could not be completed",
   };
@@ -1169,7 +1185,7 @@ export function DeployFlow({
           <h3>Connect your wallet to review</h3>
           <p className="deploy-muted">
             Your token setup is saved in this form. Connect a wallet to review the final details
-            and deploy to BNB Smart Chain Testnet.
+            and deploy to {intendedChainId === BSC_MAINNET_CHAIN_ID ? "BNB Smart Chain" : "BNB Smart Chain Testnet"}.
           </p>
           <button type="button" className="btn btn-primary" onClick={() => openWallet("connect")}>
             <i className="fa-solid fa-wallet" aria-hidden="true"></i>Connect Wallet
@@ -1180,14 +1196,14 @@ export function DeployFlow({
           <h3>Wrong network</h3>
           <p className="deploy-muted">
             {network.status === "wrong"
-              ? `Your wallet is connected to ${networkLabel(network.chainId)}. Please switch your wallet to BNB Smart Chain Testnet and try again.`
+              ? `Your wallet is connected to ${networkLabel(network.chainId)}. Please switch your wallet to ${intendedChainId === BSC_MAINNET_CHAIN_ID ? "BNB Smart Chain" : "BNB Smart Chain Testnet"} and try again.`
               : "Your wallet connection could not be verified. Reconnect and try again."}
           </p>
           <button type="button" className="btn btn-ghost" onClick={() => void network.refresh()}>
             <i className="fa-solid fa-arrows-rotate" aria-hidden="true"></i>Re-check network
           </button>
         </div>
-      ) : onMainnet ? (
+      ) : onMainnet && intendedChainId === BSC_TESTNET_CHAIN_ID ? (
         <div className="deploy-card">
           <div className="deploy-preview-tag" role="status">
             <i className="fa-solid fa-eye" aria-hidden="true"></i>Mainnet preview — deployment is
@@ -1339,7 +1355,7 @@ export function DeployFlow({
                     Verifying deployment
                   </span>
                   <p className="deploy-muted">
-                    Checking the confirmed transaction on BNB Smart Chain Testnet. This
+                    Checking the confirmed transaction on {intendedChainId === BSC_MAINNET_CHAIN_ID ? "BNB Smart Chain" : "BNB Smart Chain Testnet"}. This
                     re-reads the public receipt only — no wallet confirmation and no new
                     transaction.
                   </p>
@@ -1391,11 +1407,11 @@ export function DeployFlow({
               <dl className="deploy-review">
                 <div>
                   <dt>Network</dt>
-                  <dd>BNB Smart Chain Testnet</dd>
+                  <dd>{intendedChainId === BSC_MAINNET_CHAIN_ID ? "BNB Smart Chain" : "BNB Smart Chain Testnet"}</dd>
                 </div>
                 <div>
                   <dt>Chain ID</dt>
-                  <dd>97</dd>
+                  <dd>{intendedChainId}</dd>
                 </div>
                 <div>
                   <dt>Wallet</dt>
@@ -1439,8 +1455,8 @@ export function DeployFlow({
                   </>
                 ) : (
                   <div>
-                    <dt>Testnet platform fee</dt>
-                    <dd>0 BNB</dd>
+                    <dt>{intendedChainId === BSC_MAINNET_CHAIN_ID ? "Mainnet platform fee" : "Testnet platform fee"}</dt>
+                    <dd>{intendedChainId === BSC_MAINNET_CHAIN_ID ? "See authorized fee above" : "0 BNB"}</dd>
                   </div>
                 )}
                 <div>
@@ -1465,8 +1481,9 @@ export function DeployFlow({
                 </p>
               ) : null}
               <p className="deploy-muted">
-                Testnet deployments are fee-free: you pay 0 BNB platform fee. Network gas is
-                charged separately by BNB Smart Chain and never mixed into the platform price.
+                {intendedChainId === BSC_MAINNET_CHAIN_ID
+                  ? "Mainnet deployments include a platform fee. Network gas is charged separately by BNB Smart Chain and never mixed into the platform price."
+                  : "Testnet deployments are fee-free: you pay 0 BNB platform fee. Network gas is charged separately by BNB Smart Chain and never mixed into the platform price."}
               </p>
               {(quoteFailed || gasFailed) && (
                 <button
@@ -1553,7 +1570,7 @@ export function DeployFlow({
                 <div className="deploy-error" role="status">
                   <b>V1 factory not configured</b>
                   <p>
-                    The final V1 deployment contract is not live on Testnet yet. Your
+                    The final V1 deployment contract is not live on {intendedChainId === BSC_MAINNET_CHAIN_ID ? "BNB Smart Chain" : "BNB Smart Chain Testnet"} yet. Your
                     configuration above is preserved — nothing was submitted and no
                     transaction is possible from this screen until the factory is
                     deployed.

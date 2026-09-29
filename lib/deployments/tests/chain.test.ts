@@ -7,6 +7,7 @@ import {
   resetServerChainReaderForTests,
   ServerRpcUnavailableError,
   serverRpcUrl,
+  serverRpcUrlForChain,
 } from "../chain";
 
 function withEnv(name: string, value: string | undefined, fn: () => void): void {
@@ -50,52 +51,71 @@ describe("deployments — server RPC resolution (fail-closed in production)", ()
       });
     });
   });
+
+  it("chain 97 uses testnet RPC", () => {
+    withEnv("BSC_TESTNET_RPC_URL", "https://testnet-rpc.example.com", () => {
+      assert.equal(serverRpcUrlForChain(97), "https://testnet-rpc.example.com");
+    });
+  });
+
+  it("chain 56 uses mainnet RPC", () => {
+    withEnv("BSC_MAINNET_RPC_URL", "https://mainnet-rpc.example.com", () => {
+      assert.equal(serverRpcUrlForChain(56), "https://mainnet-rpc.example.com");
+    });
+  });
+
+  it("chain 56 requires explicit RPC URL (no fallback)", () => {
+    withEnv("BSC_MAINNET_RPC_URL", undefined, () => {
+      withEnv("NODE_ENV", "production", () => {
+        assert.throws(() => serverRpcUrlForChain(56), ServerRpcUnavailableError);
+      });
+    });
+  });
+
+  it("unsupported chain returns null", () => {
+    assert.equal(serverRpcUrlForChain(1), null);
+    assert.equal(serverRpcUrlForChain(137), null);
+  });
 });
 
-describe("deployments — expected factory resolution (V1 trust boundary)", () => {
-  const V1 = "0xb0fade4dae1b17b156d21dfe053ee69e0478b80d";
-  const LEGACY = "0x1111111111111111111111111111111111111111";
+describe("deployments — expected factory resolution (dual-chain)", () => {
+  const V1_TESTNET = "0xb0fade4dae1b17b156d21dfe053ee69e0478b80d";
+  const V1_MAINNET = "0x1111111111111111111111111111111111111111";
 
-  function withFactories(
-    v1: string | undefined,
-    legacy: string | undefined,
-    fn: () => void
-  ): void {
-    withEnv("NEXT_PUBLIC_V1_FACTORY_ADDRESS", v1, () => {
-      withEnv("NEXT_PUBLIC_TESTNET_FACTORY_ADDRESS", legacy, fn);
-    });
-  }
-
-  it("resolves the canonical V1 factory when configured", () => {
-    withFactories(V1, undefined, () => {
-      assert.equal(getExpectedFactory(), V1);
+  it("chain 97 resolves testnet V1 factory", () => {
+    withEnv("NEXT_PUBLIC_V1_FACTORY_ADDRESS", V1_TESTNET, () => {
+      withEnv("NEXT_PUBLIC_V1_MAINNET_FACTORY_ADDRESS", "", () => {
+        assert.equal(getExpectedFactory(97), V1_TESTNET);
+      });
     });
   });
 
-  it("prefers V1 over a stale legacy factory (never shadowed)", () => {
-    withFactories(V1, LEGACY, () => {
-      assert.equal(getExpectedFactory(), V1);
+  it("chain 56 resolves mainnet V1 factory", () => {
+    withEnv("NEXT_PUBLIC_V1_FACTORY_ADDRESS", "", () => {
+      withEnv("NEXT_PUBLIC_V1_MAINNET_FACTORY_ADDRESS", V1_MAINNET, () => {
+        assert.equal(getExpectedFactory(56), V1_MAINNET);
+      });
     });
   });
 
-  it("falls back to the legacy factory only when V1 is unset", () => {
-    withFactories(undefined, LEGACY, () => {
-      assert.equal(getExpectedFactory(), LEGACY);
+  it("chain 56 returns null when mainnet factory not configured", () => {
+    withEnv("NEXT_PUBLIC_V1_FACTORY_ADDRESS", V1_TESTNET, () => {
+      withEnv("NEXT_PUBLIC_V1_MAINNET_FACTORY_ADDRESS", "", () => {
+        assert.equal(getExpectedFactory(56), null);
+      });
     });
   });
 
-  it("returns null when no factory is configured (fail closed)", () => {
-    withFactories(undefined, undefined, () => {
-      assert.equal(getExpectedFactory(), null);
+  it("chain 97 returns null when testnet factory not configured", () => {
+    withEnv("NEXT_PUBLIC_V1_FACTORY_ADDRESS", "", () => {
+      withEnv("NEXT_PUBLIC_V1_MAINNET_FACTORY_ADDRESS", V1_MAINNET, () => {
+        assert.equal(getExpectedFactory(97), null);
+      });
     });
   });
 
-  it("ignores malformed factory values", () => {
-    withFactories("not-an-address", "also-bad", () => {
-      assert.equal(getExpectedFactory(), null);
-    });
-    withFactories("not-an-address", LEGACY, () => {
-      assert.equal(getExpectedFactory(), LEGACY);
-    });
+  it("unsupported chain returns null", () => {
+    assert.equal(getExpectedFactory(1), null);
+    assert.equal(getExpectedFactory(137), null);
   });
 });

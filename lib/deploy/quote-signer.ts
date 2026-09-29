@@ -310,6 +310,15 @@ export function getQuoteServerConfig(
   if (!chainRaw || !Number.isInteger(chainId) || chainId <= 0) {
     throw new QuoteSignerError("chain-unavailable", "DEPLOY_QUOTE_CHAIN_ID is not configured");
   }
+  // Chain 56 (BSC Mainnet) MUST NOT use zero-fee — reject at config load.
+  const zeroFeeRaw = readEnv(env, "DEPLOY_QUOTE_ZERO_FEE").toLowerCase();
+  const zeroFee = zeroFeeRaw === "true";
+  if (chainId === 56 && zeroFee) {
+    throw new QuoteSignerError(
+      "signer-unavailable",
+      "DEPLOY_QUOTE_ZERO_FEE must not be true for chain 56 (BSC Mainnet)"
+    );
+  }
   const factory = readEnv(env, "DEPLOY_QUOTE_FACTORY_ADDRESS");
   if (!isAddress(factory)) {
     throw new QuoteSignerError("factory-unavailable", "DEPLOY_QUOTE_FACTORY_ADDRESS is not configured");
@@ -328,7 +337,7 @@ export function getQuoteServerConfig(
     factory: factory as `0x${string}`,
     signerAddress: signerAddress as `0x${string}`,
     ttlSeconds,
-    zeroFee: readEnv(env, "DEPLOY_QUOTE_ZERO_FEE").toLowerCase() === "true",
+    zeroFee,
   };
 }
 

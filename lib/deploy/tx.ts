@@ -147,7 +147,7 @@ export function shortenTxHash(hash: string): string {
 
 export type PendingDeployment = {
   txHash: `0x${string}`;
-  chainId: 97;
+  chainId: number;
   name: string;
   symbol: string;
   savedAt: number;

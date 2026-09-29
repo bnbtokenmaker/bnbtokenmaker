@@ -6,18 +6,22 @@
  * Everything else (contract, deployer, token identity, fees) is derived
  * server-side from the chain. Client claims beyond the hint are rejected —
  * there is no field for them to arrive in.
+ *
+ * Dual-chain: both BSC Mainnet (56) and BSC Testnet (97) are supported.
  */
 
 import { FEATURE_CONFIG_VERSION } from "../db/schema";
 import { decodeFeatureBitmap } from "../token/config";
+import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID } from "../deploy/chains";
 
-export const RECORD_CHAIN_ID = 97 as const;
+export const RECORD_CHAIN_ID = BSC_TESTNET_CHAIN_ID;
 export const ALLOWED_RECORD_CHAINS: ReadonlySet<number> = new Set([
-  RECORD_CHAIN_ID,
+  BSC_MAINNET_CHAIN_ID,
+  BSC_TESTNET_CHAIN_ID,
 ]);
 
 export type RecordHint = {
-  chainId: typeof RECORD_CHAIN_ID;
+  chainId: number;
   txHash: `0x${string}`;
 };
 
@@ -97,7 +101,7 @@ export function parseRecordHint(input: unknown): RecordHint {
   if (!isTxHash(input.txHash)) {
     throw new RecordHintError("invalid-tx-hash", "txHash must be a 32-byte hash");
   }
-  return { chainId: RECORD_CHAIN_ID, txHash: normalizeTxHash(input.txHash) };
+  return { chainId: input.chainId, txHash: normalizeTxHash(input.txHash) };
 }
 
 // ---------------------------------------------------------------------------

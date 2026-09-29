@@ -3,18 +3,24 @@ import "@nomicfoundation/hardhat-viem";
 import "@nomicfoundation/hardhat-verify";
 
 /**
- * Phase 6B contract tooling. Deliberately minimal: compile + in-process
- * tests + testnet deployment helpers. No mainnet keys, no custodial signers.
+ * Phase 6B/7D contract tooling. Deliberately minimal: compile + in-process
+ * tests + testnet/mainnet deployment helpers.
  *
  * - Compile:   npx hardhat compile
  * - Test:      npx hardhat test
- * - Testnet deploy (manual, wallet-signed; see contracts/README): uses
- *   BSC_TESTNET_RPC_URL for reads only. Private keys are NEVER read here.
- * - Verify:    BscScan Testnet via BSCSCAN_API_KEY (optional, blank = skip).
+ * - Testnet deploy: uses BSC_TESTNET_RPC_URL + TESTNET_DEPLOYER_KEY (optional)
+ * - Mainnet deploy: uses BSC_MAINNET_RPC_URL + MAINNET_DEPLOYER_KEY (optional)
+ * - Verify:    BscScan via BSCSCAN_API_KEY (optional, blank = skip)
+ *
+ * No mainnet private key is required to run ordinary tests/build.
+ * Testnet configuration continues to work unchanged.
  */
 const BSC_TESTNET_RPC_URL =
   (process.env.BSC_TESTNET_RPC_URL ?? "").trim() ||
   "https://data-seed-prebsc-1-s1.binance.org:8545/";
+
+const BSC_MAINNET_RPC_URL =
+  (process.env.BSC_MAINNET_RPC_URL ?? "").trim();
 
 const BSCSCAN_API_KEY = (process.env.BSCSCAN_API_KEY ?? "").trim();
 
@@ -50,10 +56,22 @@ const config: HardhatUserConfig = {
           ? []
           : [(process.env.TESTNET_DEPLOYER_KEY ?? "").trim()],
     },
+    bscMainnet: {
+      // Mainnet network: RPC from env, deployer key from env.
+      // No key is loaded unless explicitly provided — ordinary tests/build
+      // work without any mainnet configuration.
+      url: BSC_MAINNET_RPC_URL || "https://bsc-dataseed1.binance.org",
+      chainId: 56,
+      accounts:
+        (process.env.MAINNET_DEPLOYER_KEY ?? "").trim() === ""
+          ? []
+          : [(process.env.MAINNET_DEPLOYER_KEY ?? "").trim()],
+    },
   },
   etherscan: {
     apiKey: {
       bscTestnet: BSCSCAN_API_KEY,
+      bsc: BSCSCAN_API_KEY,
     },
     customChains: [
       {
@@ -62,6 +80,14 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: "https://api-testnet.bscscan.com/api",
           browserURL: "https://testnet.bscscan.com",
+        },
+      },
+      {
+        network: "bsc",
+        chainId: 56,
+        urls: {
+          apiURL: "https://api.bscscan.com/api",
+          browserURL: "https://bscscan.com",
         },
       },
     ],

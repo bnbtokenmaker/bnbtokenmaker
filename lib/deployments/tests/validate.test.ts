@@ -23,13 +23,22 @@ describe("deployments — record hint validation", () => {
     assert.equal(hint.txHash, TX);
   });
 
-  it("rejects non-97 chains (mainnet stays out of the record path)", () => {
-    assert.throws(() => parseRecordHint({ chainId: 56, txHash: TX }), (error) => {
+  it("accepts chain 56 (BSC Mainnet) and 97 (BSC Testnet)", () => {
+    const hint56 = parseRecordHint({ chainId: 56, txHash: TX });
+    assert.equal(hint56.chainId, 56);
+    assert.equal(hint56.txHash, TX);
+    const hint97 = parseRecordHint({ chainId: 97, txHash: TX });
+    assert.equal(hint97.chainId, 97);
+    assert.equal(hint97.txHash, TX);
+  });
+
+  it("rejects unsupported chains", () => {
+    assert.throws(() => parseRecordHint({ chainId: 1, txHash: TX }), (error) => {
       assert.ok(error instanceof RecordHintError);
       assert.equal(error.code, "unsupported-chain");
       return true;
     });
-    assert.throws(() => parseRecordHint({ chainId: 1, txHash: TX }), (error) => {
+    assert.throws(() => parseRecordHint({ chainId: 137, txHash: TX }), (error) => {
       assert.ok(error instanceof RecordHintError);
       return true;
     });

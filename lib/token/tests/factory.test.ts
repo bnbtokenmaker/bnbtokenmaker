@@ -7,7 +7,6 @@ import {
   factoryAddress,
   parseTokenCreatedLog,
   v1FactoryAddress,
-  V1_FACTORY_CHAIN_ID,
 } from "../factory";
 
 const TOKEN = "0x1111111111111111111111111111111111111111";
@@ -74,24 +73,33 @@ describe("factory boundary", () => {
     assert.equal(factoryAddress(null), null);
   });
 
-  it("V1 factory boundary: 97-only, env-driven, 56 hard-disabled", () => {
-    assert.equal(V1_FACTORY_CHAIN_ID, 97);
-    const key = "NEXT_PUBLIC_V1_FACTORY_ADDRESS";
-    const saved = process.env[key];
+  it("V1 factory boundary: dual-chain, env-driven, no cross-chain fallback", () => {
+    const testnetKey = "NEXT_PUBLIC_V1_FACTORY_ADDRESS";
+    const mainnetKey = "NEXT_PUBLIC_V1_MAINNET_FACTORY_ADDRESS";
+    const savedTestnet = process.env[testnetKey];
+    const savedMainnet = process.env[mainnetKey];
     try {
-      delete process.env[key];
+      delete process.env[testnetKey];
+      delete process.env[mainnetKey];
       assert.equal(v1FactoryAddress(97), null);
       assert.equal(v1FactoryAddress(56), null);
-      process.env[key] = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+      process.env[testnetKey] = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
       assert.equal(v1FactoryAddress(97), "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-      // Chain 56 stays disabled even with the env set.
+      // Chain 56 does NOT fall back to testnet factory.
       assert.equal(v1FactoryAddress(56), null);
       assert.equal(v1FactoryAddress(null), null);
-      process.env[key] = "not-an-address";
+      process.env[testnetKey] = "not-an-address";
+      assert.equal(v1FactoryAddress(97), null);
+      // Mainnet factory from separate env var.
+      process.env[mainnetKey] = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+      assert.equal(v1FactoryAddress(56), "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+      // Chain 97 does NOT fall back to mainnet factory.
       assert.equal(v1FactoryAddress(97), null);
     } finally {
-      if (saved === undefined) delete process.env[key];
-      else process.env[key] = saved;
+      if (savedTestnet === undefined) delete process.env[testnetKey];
+      else process.env[testnetKey] = savedTestnet;
+      if (savedMainnet === undefined) delete process.env[mainnetKey];
+      else process.env[mainnetKey] = savedMainnet;
     }
   });
 

@@ -1,67 +1,87 @@
 /**
- * Phase 7A server-side chain reader (BSC Testnet only).
+ * Phase 7A server-side chain reader — dual-chain (BSC Mainnet + BSC Testnet).
  *
  * Deployment verification must never depend on a browser-selected provider:
  * this module builds a viem public client from SERVER-SIDE RPC config.
  * Server-side by placement (imported only by the record route, never by
  * client code); no RPC URL is ever sent to the browser.
+ *
+ * Chain isolation:
+ * - Chain 97 → BSC Testnet + BSC_TESTNET_RPC_URL
+ * - Chain 56 → BSC Mainnet + BSC_MAINNET_RPC_URL
+ * - No cross-chain fallback; unsupported chains fail closed.
  */
 
 
 import { createPublicClient, http } from "viem";
-import { bscTestnet } from "viem/chains";
+import { bsc, bscTestnet } from "viem/chains";
 
-import { PHASE6B_CHAIN_ID, PHASE6B_RPC_DEFAULT } from "../deploy/phase6b";
-import { tokenAbi } from "../token/factory";
+import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID, isSupportedV1ChainId } from "../deploy/chains";
+import { PHASE6B_RPC_DEFAULT } from "../deploy/phase6b";
+import { tokenAbi, v1FactoryAddress } from "../token/factory";
 import type { ChainReader, TokenScalarViews } from "./verify";
 
 const RPC_TIMEOUT_MS = 15_000;
 
 export class ServerRpcUnavailableError extends Error {
-  constructor() {
-    super("BSC_TESTNET_RPC_URL is not set");
+  constructor(message = "RPC URL is not set for the requested chain") {
+    super(message);
     this.name = "ServerRpcUnavailableError";
   }
 }
 
 /**
- * Resolve the server RPC URL.
+ * Resolve the server RPC URL for a specific chain.
  *
- * - An explicit `BSC_TESTNET_RPC_URL` always wins when set.
- * - Outside production, a public Binance Testnet endpoint is used as a
- *   local/test convenience so verification stays exercisable without keys.
- * - In production the fallback is DISABLED (fail-closed): persistence must
- *   run against a deterministic operator-configured endpoint, never a silent
- *   public default. Callers map the thrown error to a sanitized 503 and
- *   never write a deployment row.
+ * - Chain 97: BSC_TESTNET_RPC_URL (with public fallback outside production)
+ * - Chain 56: BSC_MAINNET_RPC_URL (no fallback — production only)
+ * - Other chains: null (fail closed)
  */
-export function serverRpcUrl(): string {
-  const configured = (process.env.BSC_TESTNET_RPC_URL ?? "").trim();
-  if (configured) return configured;
-  if (process.env.NODE_ENV === "production") {
-    throw new ServerRpcUnavailableError();
+export function serverRpcUrlForChain(chainId: number): string | null {
+  if (chainId === BSC_TESTNET_CHAIN_ID) {
+    const configured = (process.env.BSC_TESTNET_RPC_URL ?? "").trim();
+    if (configured) return configured;
+    if (process.env.NODE_ENV === "production") {
+      throw new ServerRpcUnavailableError("BSC_TESTNET_RPC_URL is not set");
+    }
+    return PHASE6B_RPC_DEFAULT;
   }
-  return PHASE6B_RPC_DEFAULT;
+  if (chainId === BSC_MAINNET_CHAIN_ID) {
+    const configured = (process.env.BSC_MAINNET_RPC_URL ?? "").trim();
+    if (!configured) {
+      throw new ServerRpcUnavailableError("BSC_MAINNET_RPC_URL is not set");
+    }
+    return configured;
+  }
+  return null;
 }
-
-function rpcUrl(): string {
-  return serverRpcUrl();
-}
-
-let cached: ChainReader | null = null;
 
 /**
- * Shared server chain reader for chain 97. Pure reads
- * (getTransaction / getTransactionReceipt / token views) — no wallet,
- * no signing.
+ * Resolve the server RPC URL (testnet default for backward compatibility).
+ * @deprecated Use serverRpcUrlForChain(chainId) for dual-chain support.
  */
-export function getServerChainReader(): ChainReader {
-  if (cached) return cached;
+export function serverRpcUrl(): string {
+  return serverRpcUrlForChain(BSC_TESTNET_CHAIN_ID) ?? PHASE6B_RPC_DEFAULT;
+}
+
+type ChainCache = {
+  [BSC_MAINNET_CHAIN_ID]?: ChainReader | null;
+  [BSC_TESTNET_CHAIN_ID]?: ChainReader | null;
+};
+
+const cache: ChainCache = {};
+
+function createReader(chainId: number): ChainReader {
+  const rpcUrl = serverRpcUrlForChain(chainId);
+  if (!rpcUrl) {
+    throw new ServerRpcUnavailableError(`Unsupported chain: ${chainId}`);
+  }
+  const chain = chainId === BSC_MAINNET_CHAIN_ID ? bsc : bscTestnet;
   const client = createPublicClient({
-    chain: bscTestnet,
-    transport: http(rpcUrl(), { timeout: RPC_TIMEOUT_MS }),
+    chain,
+    transport: http(rpcUrl, { timeout: RPC_TIMEOUT_MS }),
   });
-  cached = {
+  return {
     async getTransaction(hash) {
       const tx = await client.getTransaction({ hash });
       if (!tx) return null;
@@ -149,31 +169,51 @@ export function getServerChainReader(): ChainReader {
       }
     },
   };
-  return cached;
-}
-
-/** Test escape hatch: drop the cached reader between isolated runs. */
-export function resetServerChainReaderForTests(): void {
-  cached = null;
 }
 
 /**
- * Expected factory address for server verification (chain 97 only).
+ * Shared server chain reader for a specific chain. Pure reads
+ * (getTransaction / getTransactionReceipt / token views) — no wallet,
+ * no signing.
  *
- * V1-first: the frozen V1 factory (NEXT_PUBLIC_V1_FACTORY_ADDRESS) is the
- * security-critical comparator for every new deployment — authorize, tx
- * build, receipt verification and the DB record must all resolve to it.
- * The legacy Phase 6B factory env (NEXT_PUBLIC_TESTNET_FACTORY_ADDRESS)
- * remains ONLY as a fallback so historical fee-free receipts can still be
- * recorded when no V1 factory is configured; it is never preferred while
- * V1 is set, so a stale legacy address can never shadow the canonical V1
- * factory on the record path.
+ * Chain 97 → BSC Testnet reader
+ * Chain 56 → BSC Mainnet reader
+ * Other → throws ServerRpcUnavailableError
  */
-export function getExpectedFactory(): `0x${string}` | null {
-  const v1 = (process.env.NEXT_PUBLIC_V1_FACTORY_ADDRESS ?? "").trim();
-  if (/^0x[a-fA-F0-9]{40}$/.test(v1)) return v1 as `0x${string}`;
-  const raw = (process.env.NEXT_PUBLIC_TESTNET_FACTORY_ADDRESS ?? "").trim();
-  return /^0x[a-fA-F0-9]{40}$/.test(raw) ? (raw as `0x${string}`) : null;
+export function getServerChainReader(chainId: number): ChainReader {
+  if (!isSupportedV1ChainId(chainId)) {
+    throw new ServerRpcUnavailableError(`Unsupported chain: ${chainId}`);
+  }
+  const cached = cache[chainId];
+  if (cached) return cached;
+  const reader = createReader(chainId);
+  cache[chainId] = reader;
+  return reader;
 }
 
-export { PHASE6B_CHAIN_ID };
+/**
+ * @deprecated Use getServerChainReader(chainId) for dual-chain support.
+ * Returns the testnet (chain 97) reader for backward compatibility.
+ */
+export function getServerChainReaderForTestnet(): ChainReader {
+  return getServerChainReader(BSC_TESTNET_CHAIN_ID);
+}
+
+/** Test escape hatch: drop all cached readers between isolated runs. */
+export function resetServerChainReaderForTests(): void {
+  cache[BSC_MAINNET_CHAIN_ID] = null;
+  cache[BSC_TESTNET_CHAIN_ID] = null;
+}
+
+/**
+ * Expected factory address for server verification — dual-chain.
+ *
+ * Chain 97: NEXT_PUBLIC_V1_FACTORY_ADDRESS (testnet V1 factory)
+ * Chain 56: NEXT_PUBLIC_V1_MAINNET_FACTORY_ADDRESS (mainnet V1 factory)
+ *
+ * Each chain resolves ONLY from its own configuration. No cross-chain
+ * fallback. Returns null when not configured (fail closed).
+ */
+export function getExpectedFactory(chainId: number): `0x${string}` | null {
+  return v1FactoryAddress(chainId);
+}

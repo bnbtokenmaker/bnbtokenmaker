@@ -8,12 +8,13 @@ function get(url: string): Request {
 }
 
 describe("GET /api/deployments — discovery validation", () => {
-  it("rejects malformed deployer, chain and limit", async () => {
+  it("rejects malformed deployer, unsupported chain and limit", async () => {
     for (const url of [
       "http://localhost/api/deployments",
       "http://localhost/api/deployments?deployer=nope",
       "http://localhost/api/deployments?deployer=0x123",
-      "http://localhost/api/deployments?deployer=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266&chainId=56",
+      "http://localhost/api/deployments?deployer=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266&chainId=1",
+      "http://localhost/api/deployments?deployer=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266&chainId=137",
       "http://localhost/api/deployments?deployer=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266&limit=0",
       "http://localhost/api/deployments?deployer=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266&limit=99",
     ]) {
@@ -21,6 +22,15 @@ describe("GET /api/deployments — discovery validation", () => {
       assert.equal(response.status, 400, url);
       const body = (await response.json()) as { error: { code: string } };
       assert.ok(typeof body.error.code === "string", url);
+    }
+  });
+
+  it("accepts chain 56 and 97", async () => {
+    for (const chainId of [56, 97]) {
+      const response = await GET(
+        get(`http://localhost/api/deployments?deployer=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266&chainId=${chainId}&limit=8`)
+      );
+      assert.ok([200, 503].includes(response.status), `chainId=${chainId}`);
     }
   });
 

@@ -114,6 +114,7 @@ export function DeployPage() {
             sellTaxBps={draft.sellTaxBps ?? "0"}
             marketingWallet={draft.marketingWallet ?? ""}
             snipeBlocks={draft.snipeBlocks ?? "0"}
+            intendedChainId={97}
           />
         ) : (
           <div className="deploy-card" role="status" aria-live="polite">

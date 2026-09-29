@@ -113,7 +113,7 @@ export type PaidBinding = {
 };
 
 export type VerifiedDeploymentRecord = {
-  chainId: 97;
+  chainId: number;
   txHash: `0x${string}`;
   contractAddress: `0x${string}`;
   factoryAddress: `0x${string}`;

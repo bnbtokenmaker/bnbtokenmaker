@@ -78,7 +78,7 @@ describe("admin dashboard — display formatting", () => {
 
   it("labels chains and builds testnet explorer URLs", () => {
     assert.equal(chainLabel(97), "BSC Testnet");
-    assert.equal(chainLabel(56), "Chain 56");
+    assert.equal(chainLabel(56), "BSC Mainnet");
     const addr = ADDRESS.toLowerCase();
     assert.equal(
       explorerAddressUrl(97, addr),

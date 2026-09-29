@@ -200,6 +200,7 @@ export function formatUtc(date: Date): string {
 
 /** Human chain label for admin display. */
 export function chainLabel(chainId: number): string {
+  if (chainId === 56) return "BSC Mainnet";
   if (chainId === 97) return "BSC Testnet";
   return `Chain ${chainId}`;
 }

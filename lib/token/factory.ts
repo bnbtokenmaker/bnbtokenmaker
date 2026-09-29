@@ -4,6 +4,7 @@ import TokenFactoryArtifact from "./abi/TokenFactory.json";
 import TokenArtifact from "./abi/BNBTokenMakerToken.json";
 import { decodeFeatureBitmap, type TokenFeatureFlags } from "./config";
 import { PHASE6B_CHAIN_ID } from "../deploy/phase6b";
+import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID } from "../deploy/chains";
 
 /**
  * Phase 6C integration boundary (typed, no transaction flow yet).
@@ -15,10 +16,8 @@ export const tokenAbi = TokenArtifact.abi as readonly unknown[];
 export const factoryAbi = TokenFactoryArtifact.abi as readonly unknown[];
 
 /**
- * Factory address by chain. NULL until a real deployment occurs — Phase 6C
- * must refuse to build a transaction without a known address. Env override
- * (NEXT_PUBLIC_TESTNET_FACTORY_ADDRESS) lets a manually deployed testnet
- * factory be consumed without code changes.
+ * Legacy Phase 6B factory address (testnet only).
+ * NULL until a real deployment occurs.
  */
 function envFactoryAddress(): `0x${string}` | null {
   const raw = (process.env.NEXT_PUBLIC_TESTNET_FACTORY_ADDRESS ?? "").trim();
@@ -26,26 +25,34 @@ function envFactoryAddress(): `0x${string}` | null {
 }
 
 /**
- * Final V1 factory boundary (7D-E2).
+ * V1 factory address resolution — dual-chain.
+ *
+ * Chain 97 (BSC Testnet): NEXT_PUBLIC_V1_FACTORY_ADDRESS
+ * Chain 56 (BSC Mainnet): NEXT_PUBLIC_V1_MAINNET_FACTORY_ADDRESS
+ *
+ * Each chain resolves ONLY from its own configuration. No cross-chain
+ * fallback. Unsupported chains return null (fail closed).
  *
  * The frozen V1 factory (22-field TokenConfig + EIP-712 quote + value) is a
  * DIFFERENT contract from the legacy Phase 6B testnet factory: the old
- * factory MUST NEVER be silently used for V1 calls. This resolves the V1
- * factory address per chain, or null when not configured (7D-F deploys it).
- * Chain 56 is hard-disabled here regardless of configuration.
+ * factory MUST NEVER be silently used for V1 calls.
  */
-export const V1_FACTORY_CHAIN_ID = 97;
-
-function envV1FactoryAddress(): `0x${string}` | null {
-  const raw = (process.env.NEXT_PUBLIC_V1_FACTORY_ADDRESS ?? "").trim();
-  return /^0x[a-fA-F0-9]{40}$/.test(raw) ? (raw as `0x${string}`) : null;
-}
-
 export function v1FactoryAddress(chainId: number | null | undefined): `0x${string}` | null {
-  if (chainId !== V1_FACTORY_CHAIN_ID) return null;
-  return envV1FactoryAddress();
+  if (chainId === BSC_TESTNET_CHAIN_ID) {
+    const raw = (process.env.NEXT_PUBLIC_V1_FACTORY_ADDRESS ?? "").trim();
+    return /^0x[a-fA-F0-9]{40}$/.test(raw) ? (raw as `0x${string}`) : null;
+  }
+  if (chainId === BSC_MAINNET_CHAIN_ID) {
+    const raw = (process.env.NEXT_PUBLIC_V1_MAINNET_FACTORY_ADDRESS ?? "").trim();
+    return /^0x[a-fA-F0-9]{40}$/.test(raw) ? (raw as `0x${string}`) : null;
+  }
+  return null;
 }
 
+/**
+ * Legacy Phase 6B factory address (testnet only, chain 97).
+ * Returns null for any other chain — the legacy factory is NEVER used for V1.
+ */
 export function factoryAddress(
   chainId: number | null | undefined
 ): `0x${string}` | null {

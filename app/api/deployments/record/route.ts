@@ -19,6 +19,10 @@ import {
 } from "../../../../lib/deployments/service";
 import { PgDeploymentStore } from "../../../../lib/deployments/store";
 import {
+  parseRecordHint,
+  RecordHintError,
+} from "../../../../lib/deployments/validate";
+import {
   checkRateLimit,
   clientIpFromRequest,
 } from "../../../../lib/server/rate-limit";
@@ -54,11 +58,21 @@ export async function POST(request: Request): Promise<Response> {
     return errorBody("invalid-request", 400);
   }
 
+  let hint;
+  try {
+    hint = parseRecordHint(body);
+  } catch (error) {
+    if (error instanceof RecordHintError) {
+      return errorBody(error.code, 400);
+    }
+    return errorBody("invalid-request", 400);
+  }
+
   try {
     const outcome = await recordDeployment(body, {
       store: new PgDeploymentStore(),
-      chain: getServerChainReader(),
-      expectedFactory: getExpectedFactory(),
+      chain: getServerChainReader(hint.chainId),
+      expectedFactory: getExpectedFactory(hint.chainId),
       quoteForFeatures: serverQuoteSnapshot,
     });
     const status = outcome.result.inserted ? 201 : 200;
