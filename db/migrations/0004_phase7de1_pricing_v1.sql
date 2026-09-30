@@ -36,10 +36,37 @@ ALTER TABLE IF EXISTS pricing_versions
   ADD COLUMN IF NOT EXISTS antibot_fee_wei TEXT NULL,
   ADD COLUMN IF NOT EXISTS autoliquidity_fee_wei TEXT NULL;
 
-ALTER TABLE IF EXISTS pricing_versions
-  ADD CONSTRAINT pricing_versions_trading_fee_check
-    CHECK (trading_fee_wei IS NULL OR trading_fee_wei ~ '^(0|[1-9][0-9]*)$'),
-  ADD CONSTRAINT pricing_versions_antibot_fee_check
-    CHECK (antibot_fee_wei IS NULL OR antibot_fee_wei ~ '^(0|[1-9][0-9]*)$'),
-  ADD CONSTRAINT pricing_versions_autoliquidity_fee_check
-    CHECK (autoliquidity_fee_wei IS NULL OR autoliquidity_fee_wei ~ '^(0|[1-9][0-9]*)$');
+-- Idempotent constraint addition: only add each CHECK constraint if it does
+-- not already exist. This makes the migration safely rerunnable.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'pricing_versions_trading_fee_check'
+      AND conrelid = 'pricing_versions'::regclass
+  ) THEN
+    ALTER TABLE pricing_versions
+      ADD CONSTRAINT pricing_versions_trading_fee_check
+        CHECK (trading_fee_wei IS NULL OR trading_fee_wei ~ '^(0|[1-9][0-9]*)$');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'pricing_versions_antibot_fee_check'
+      AND conrelid = 'pricing_versions'::regclass
+  ) THEN
+    ALTER TABLE pricing_versions
+      ADD CONSTRAINT pricing_versions_antibot_fee_check
+        CHECK (antibot_fee_wei IS NULL OR antibot_fee_wei ~ '^(0|[1-9][0-9]*)$');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'pricing_versions_autoliquidity_fee_check'
+      AND conrelid = 'pricing_versions'::regclass
+  ) THEN
+    ALTER TABLE pricing_versions
+      ADD CONSTRAINT pricing_versions_autoliquidity_fee_check
+        CHECK (autoliquidity_fee_wei IS NULL OR autoliquidity_fee_wei ~ '^(0|[1-9][0-9]*)$');
+  END IF;
+END $$;

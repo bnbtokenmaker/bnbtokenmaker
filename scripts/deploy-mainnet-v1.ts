@@ -13,6 +13,9 @@
  *   BSC_MAINNET_RPC_URL=https://... \
  *   npx hardhat run scripts/deploy-mainnet-v1.ts --network bscMainnet
  *
+ * Preflight mode (safe, no broadcast):
+ *   npx hardhat run scripts/deploy-mainnet-v1.ts --network bscMainnet --preflight
+ *
  * SAFETY GATES:
  * - The FIRST on-chain read asserts chainId == 56; anything else aborts
  *   before any key use, signing, or spending.
@@ -21,6 +24,8 @@
  *   or written to any file (manifest holds PUBLIC data only).
  * - The derived deployer address must equal MAINNET_DEPLOYER_ADDRESS or
  *   the run aborts (catches wrong-key mistakes before spending).
+ * - MAINNET_DEPLOYER_ADDRESS must equal MAINNET_FEE_RECIPIENT (operator policy).
+ * - MAINNET_QUOTE_SIGNER must differ from MAINNET_DEPLOYER_ADDRESS (operator policy).
  * - Signing uses Hardhat's own signer stack (the same path all contract
  *   tests exercise), never raw key handling in userland.
  * - Idempotent: a previous manifest under mainnet-deployments/ is verified
@@ -37,6 +42,9 @@ import { join } from "node:path";
 
 const EXPECTED_CHAIN_ID = 56;
 const MANIFEST_PATH = join(process.cwd(), "mainnet-deployments", "v1-manifest.json");
+const PANCAKE_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
+const WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
+const EXPECTED_GENERATOR = "BNBTokenMaker.com";
 
 type Manifest = {
   schema: "bnbtokenmaker-mainnet-v1/1";
@@ -93,27 +101,123 @@ function saveManifest(manifest: Manifest): void {
 }
 
 async function main(): Promise<void> {
+  const isPreflight = process.env.PREFLIGHT === "true" || process.argv.includes("--preflight");
+
   // Zero-fee safety: refuse to deploy on mainnet with zero-fee enabled.
   if (process.env.DEPLOY_QUOTE_ZERO_FEE === "true") {
     console.error("deploy-mainnet-v1: DEPLOY_QUOTE_ZERO_FEE is set — refusing to deploy on mainnet.");
     process.exit(1);
   }
 
-  const deployerKey = requiredEnv("MAINNET_DEPLOYER_KEY");
-  if (!/^0x[a-fA-F0-9]{64}$/.test(deployerKey)) {
+  const deployerKeyRaw = (process.env.MAINNET_DEPLOYER_KEY ?? "").trim();
+  const deployerAddressRaw = (process.env.MAINNET_DEPLOYER_ADDRESS ?? "").trim();
+  const feeRecipientRaw = (process.env.MAINNET_FEE_RECIPIENT ?? "").trim();
+  const quoteSignerRaw = (process.env.DEPLOY_QUOTE_SIGNER_ADDRESS ?? "").trim();
+  const maxFeeWeiRaw = (process.env.MAINNET_MAX_FEE_WEI ?? "").trim();
+
+  // In preflight mode, report missing env vars instead of exiting.
+  const missingEnv: string[] = [];
+  if (!isAddress(deployerAddressRaw)) missingEnv.push("MAINNET_DEPLOYER_ADDRESS");
+  if (!isAddress(feeRecipientRaw)) missingEnv.push("MAINNET_FEE_RECIPIENT");
+  if (!isAddress(quoteSignerRaw)) missingEnv.push("DEPLOY_QUOTE_SIGNER_ADDRESS");
+  if (!/^(0|[1-9][0-9]*)$/.test(maxFeeWeiRaw)) missingEnv.push("MAINNET_MAX_FEE_WEI");
+
+  if (missingEnv.length > 0 && !isPreflight) {
+    console.error(`deploy-mainnet-v1: ${missingEnv.join(", ")} must be set — refusing to run.`);
+    process.exit(1);
+  }
+
+  const deployerAddress = deployerAddressRaw as `0x${string}`;
+  const feeRecipient = feeRecipientRaw as `0x${string}`;
+  const quoteSigner = quoteSignerRaw as `0x${string}`;
+
+  // Operator policy: deployer must equal fee recipient for initial production config.
+  if (isAddress(deployerAddressRaw) && isAddress(feeRecipientRaw)) {
+    if (deployerAddress.toLowerCase() !== feeRecipient.toLowerCase()) {
+      console.error(
+        "deploy-mainnet-v1: MAINNET_DEPLOYER_ADDRESS must equal MAINNET_FEE_RECIPIENT for initial production configuration — aborting."
+      );
+      process.exit(1);
+    }
+  }
+
+  // Operator policy: quote signer must differ from deployer.
+  if (isAddress(quoteSignerRaw) && isAddress(deployerAddressRaw)) {
+    if (quoteSigner.toLowerCase() === deployerAddress.toLowerCase()) {
+      console.error(
+        "deploy-mainnet-v1: MAINNET_QUOTE_SIGNER must differ from MAINNET_DEPLOYER_ADDRESS — aborting."
+      );
+      process.exit(1);
+    }
+  }
+
+  // FIRST on-chain read: assert chainId == 56 before anything else.
+  const publicClient = await hre.viem.getPublicClient();
+  const chainId = await publicClient.getChainId();
+  if (chainId !== EXPECTED_CHAIN_ID) {
+    console.error(
+      `deploy-mainnet-v1: expected chainId ${EXPECTED_CHAIN_ID}, got ${chainId} — aborting.`
+    );
+    process.exit(1);
+  }
+  console.log("deploy-mainnet-v1: chainId verified:", chainId);
+
+  // Preflight mode: validate everything possible, then exit without broadcasting.
+  if (isPreflight) {
+    console.log("deploy-mainnet-v1: PREFLIGHT MODE — no broadcast will occur.");
+    console.log("deploy-mainnet-v1: verifying canonical Pancake Router bytecode...");
+    const routerCode = await publicClient.getCode({ address: PANCAKE_ROUTER as `0x${string}` });
+    if (!routerCode || routerCode === "0x") {
+      console.error("deploy-mainnet-v1: Pancake Router has no bytecode — aborting.");
+      process.exit(1);
+    }
+    console.log("deploy-mainnet-v1: Pancake Router bytecode verified.");
+    console.log("deploy-mainnet-v1: verifying WBNB bytecode...");
+    const wbnbCode = await publicClient.getCode({ address: WBNB as `0x${string}` });
+    if (!wbnbCode || wbnbCode === "0x") {
+      console.error("deploy-mainnet-v1: WBNB has no bytecode — aborting.");
+      process.exit(1);
+    }
+    console.log("deploy-mainnet-v1: WBNB bytecode verified.");
+    if (missingEnv.length > 0) {
+      console.log("deploy-mainnet-v1: MISSING env vars:", missingEnv.join(", "));
+    }
+    if (isAddress(deployerAddressRaw)) {
+      console.log("deploy-mainnet-v1: deployer address (public):", deployerAddress);
+    }
+    if (isAddress(feeRecipientRaw)) {
+      console.log("deploy-mainnet-v1: fee recipient (public):", feeRecipient);
+    }
+    if (isAddress(quoteSignerRaw)) {
+      console.log("deploy-mainnet-v1: quote signer (public):", quoteSigner);
+    }
+    if (/^(0|[1-9][0-9]*)$/.test(maxFeeWeiRaw)) {
+      console.log("deploy-mainnet-v1: MAX_FEE_WEI:", maxFeeWeiRaw);
+    }
+    if (deployerKeyRaw === "") {
+      console.log("deploy-mainnet-v1: MAINNET_DEPLOYER_KEY: MISSING (expected at this stage)");
+    } else if (!/^0x[a-fA-F0-9]{64}$/.test(deployerKeyRaw)) {
+      console.error("deploy-mainnet-v1: MAINNET_DEPLOYER_KEY is malformed — aborting.");
+      process.exit(1);
+    } else {
+      console.log("deploy-mainnet-v1: MAINNET_DEPLOYER_KEY: configured (not printed)");
+    }
+    console.log("deploy-mainnet-v1: DEPLOY_QUOTE_FACTORY_ADDRESS: MISSING (factory not deployed yet)");
+    console.log("deploy-mainnet-v1: PREFLIGHT PASS — all checks succeeded.");
+    return;
+  }
+
+  // Broadcast mode: require all env vars.
+  if (missingEnv.length > 0) {
+    console.error(`deploy-mainnet-v1: ${missingEnv.join(", ")} must be set — refusing to run.`);
+    process.exit(1);
+  }
+  if (deployerKeyRaw === "") {
+    console.error("deploy-mainnet-v1: MAINNET_DEPLOYER_KEY is not set — refusing to run.");
+    process.exit(1);
+  }
+  if (!/^0x[a-fA-F0-9]{64}$/.test(deployerKeyRaw)) {
     console.error("deploy-mainnet-v1: MAINNET_DEPLOYER_KEY is malformed — refusing to run.");
-    process.exit(1);
-  }
-  const deployerAddress = requiredEnv("MAINNET_DEPLOYER_ADDRESS");
-  const feeRecipient = requiredEnv("MAINNET_FEE_RECIPIENT");
-  const quoteSigner = requiredEnv("MAINNET_QUOTE_SIGNER");
-  const maxFeeWeiRaw = requiredEnv("MAINNET_MAX_FEE_WEI");
-  if (!isAddress(deployerAddress) || !isAddress(feeRecipient) || !isAddress(quoteSigner)) {
-    console.error("deploy-mainnet-v1: deployer/recipient/signer must be addresses.");
-    process.exit(1);
-  }
-  if (!/^(0|[1-9][0-9]*)$/.test(maxFeeWeiRaw)) {
-    console.error("deploy-mainnet-v1: MAINNET_MAX_FEE_WEI must be a canonical integer string.");
     process.exit(1);
   }
 
@@ -135,17 +239,6 @@ async function main(): Promise<void> {
   }
 
   console.log("deploy-mainnet-v1: deployer address (public):", deployerAddr);
-
-  // FIRST on-chain read: assert chainId == 56 before anything else.
-  const publicClient = await hre.viem.getPublicClient();
-  const chainId = await publicClient.getChainId();
-  if (chainId !== EXPECTED_CHAIN_ID) {
-    console.error(
-      `deploy-mainnet-v1: expected chainId ${EXPECTED_CHAIN_ID}, got ${chainId} — aborting.`
-    );
-    process.exit(1);
-  }
-  console.log("deploy-mainnet-v1: chainId verified:", chainId);
 
   // Load or create manifest.
   let manifest = loadManifest();
@@ -237,6 +330,7 @@ async function main(): Promise<void> {
   const onchainFeeRecipient = (await factory.read.feeRecipient()) as string;
   const onchainMaxFeeWei = (await factory.read.MAX_FEE_WEI()) as bigint;
   const onchainOwner = (await factory.read.owner()) as string;
+  const onchainGenerator = (await factory.read.GENERATOR()) as string;
 
   if (onchainFeeRecipient.toLowerCase() !== feeRecipient.toLowerCase()) {
     console.error("deploy-mainnet-v1: feeRecipient mismatch — aborting.");
@@ -246,9 +340,16 @@ async function main(): Promise<void> {
     console.error("deploy-mainnet-v1: MAX_FEE_WEI mismatch — aborting.");
     process.exit(1);
   }
+  if (onchainGenerator !== EXPECTED_GENERATOR) {
+    console.error(
+      `deploy-mainnet-v1: GENERATOR mismatch — expected "${EXPECTED_GENERATOR}", got "${onchainGenerator}" — aborting.`
+    );
+    process.exit(1);
+  }
   console.log("deploy-mainnet-v1: feeRecipient (public):", onchainFeeRecipient);
   console.log("deploy-mainnet-v1: MAX_FEE_WEI:", onchainMaxFeeWei.toString());
   console.log("deploy-mainnet-v1: factory owner (public):", onchainOwner);
+  console.log("deploy-mainnet-v1: GENERATOR:", onchainGenerator);
 
   // Step 4: Verify bytecode exists.
   const factoryCode = await publicClient.getCode({ address: manifest.factory.address as `0x${string}` });
