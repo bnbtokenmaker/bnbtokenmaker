@@ -1110,8 +1110,17 @@ export function CreateBuilder({
               {campaignEstimate !== null && activeCampaign !== null ? (
                 <p className="gas-note">Campaign discount ends {new Date(activeCampaign.endsAt).toUTCString()}. The final price is re-quoted from the server before deployment.</p>
               ) : null}
-              <div className="price-row"><span>Testnet platform fee</span><span>0 BNB</span></div>
-              <p className="gas-note" id="feeNote">Reference product price — testnet deployments are fee-free (0 BNB platform fee + network gas).</p>
+              {walletChainId === 56 ? (
+                <>
+                  <div className="price-row"><span>Mainnet platform fee</span><span>{formatWeiBnbDisplay(result.totalPlatformFeeWei)} BNB</span></div>
+                  <p className="gas-note" id="feeNote">Reference product price — mainnet deployments include a platform fee. Network gas is charged separately by BNB Smart Chain and never mixed into the platform price.</p>
+                </>
+              ) : (
+                <>
+                  <div className="price-row"><span>Testnet platform fee</span><span>0 BNB</span></div>
+                  <p className="gas-note" id="feeNote">Reference product price — testnet deployments are fee-free (0 BNB platform fee + network gas).</p>
+                </>
+              )}
             </div>
           ) : (
             <div className="warn" id="pricingFault" role="alert">
