@@ -6,6 +6,7 @@ import { useConnection } from "wagmi";
 
 import { useWalletUI } from "../wallet/WalletUI";
 import { trackManagerEvent } from "../../lib/manage/analytics";
+import { manageNetworkLabel, manageNetworkSummary } from "../../lib/manage/copy";
 import { loadRecents, saveRecent } from "./recents";
 
 import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID, isSupportedV1ChainId } from "../../lib/deploy/chains";
@@ -20,7 +21,7 @@ function isAddressString(value: string): boolean {
 /**
  * /manage landing: connect, inspect any token by address, jump back to
  * recent inspections. No dead routes: continue requires a valid address on
- * the supported chain; mainnet stays disabled with an explicit message.
+ * the supported chain, and the displayed network is chain-aware.
  */
 export function ManageLanding() {
   const router = useRouter();
@@ -104,7 +105,9 @@ export function ManageLanding() {
           <div className="form-sec-h">
             <span className="idx">01</span>
             <h2>Inspect a token</h2>
-            <span className="small-note">BNB Smart Chain Testnet (97) only for now.</span>
+            <span className="small-note">
+              {manageNetworkSummary(DEFAULT_MANAGE_CHAIN_ID)}
+            </span>
           </div>
           {!isConnected ? (
             <div className="deploy-card">
@@ -145,8 +148,9 @@ export function ManageLanding() {
             Inspect token
           </button>
           <p className="deploy-muted">
-            Mainnet (56) stays disabled until mainnet activation — this manager
-            targets Testnet (97) in this phase.
+            {manageNetworkLabel(BSC_MAINNET_CHAIN_ID)} (56) and{" "}
+            {manageNetworkLabel(BSC_TESTNET_CHAIN_ID)} (97) are both supported.
+            This page opens {manageNetworkLabel(DEFAULT_MANAGE_CHAIN_ID)}.
           </p>
         </section>
 
@@ -199,7 +203,7 @@ export function ManageLanding() {
           </div>
           <div className="sum-rows">
             <div className="sum-row"><span>Own tokens</span><b>Free · gas only</b></div>
-            <div className="sum-row"><span>Network</span><b>BSC Testnet (97)</b></div>
+            <div className="sum-row"><span>Network</span><b>{manageNetworkSummary(DEFAULT_MANAGE_CHAIN_ID)}</b></div>
           </div>
           <hr className="sum-sep" />
           <p className="deploy-muted">

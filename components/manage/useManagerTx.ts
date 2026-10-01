@@ -2,10 +2,8 @@
 
 import { useCallback, useState } from "react";
 import { useConnection } from "wagmi";
-import { createPublicClient, http } from "viem";
-import { bsc, bscTestnet } from "viem/chains";
-import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID } from "../../lib/deploy/chains";
 
+import { managerPublicClient } from "../../lib/manage/client";
 import {
   ProviderAccountMismatchError,
   ProviderSessionMismatchError,
@@ -24,11 +22,6 @@ import type { ManagerCall } from "../../lib/manage/calls";
 import type { ManagerActionId } from "../../lib/manage/permissions";
 
 const RECEIPT_TIMEOUT_MS = 120_000;
-
-const readClient = createPublicClient({
-  chain: bscTestnet,
-  transport: http(),
-});
 
 export type ManagerTxStatus =
   | { stage: "idle" }
@@ -99,6 +92,13 @@ export function useManagerTx(options: {
             `wrong-network: live chain ${liveChainId}, expected ${expectedChainId}`
           );
         }
+        // Resolve the receipt reader from the expected chain BEFORE broadcasting,
+        // so an unsupported chain can never reach the wallet. The transaction
+        // is only ever confirmed against the same chain it was sent on.
+        const receiptClient = managerPublicClient(expectedChainId);
+        if (!receiptClient) {
+          throw new Error(`unsupported-chain: ${expectedChainId}`);
+        }
         const from = address.toLowerCase() as `0x${string}`;
         setStatus({ stage: "sending" });
         trackManagerEvent(
@@ -114,7 +114,7 @@ export function useManagerTx(options: {
         }
         const hash = txHash as `0x${string}`;
         setStatus({ stage: "receipt" });
-        const receipt = await readClient.waitForTransactionReceipt({
+        const receipt = await receiptClient.waitForTransactionReceipt({
           hash,
           timeout: RECEIPT_TIMEOUT_MS,
         });
@@ -143,5 +143,5 @@ export function useManagerTx(options: {
 
   const reset = useCallback(() => setStatus({ stage: "idle" }), []);
 
-  return { status, submit, reset, readClient };
+  return { status, submit, reset };
 }

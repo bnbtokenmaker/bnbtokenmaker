@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useConnection } from "wagmi";
 import { useQuery } from "@tanstack/react-query";
-import { createPublicClient, formatUnits, http } from "viem";
-import { bsc, bscTestnet } from "viem/chains";
-import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID, isSupportedV1ChainId } from "../../lib/deploy/chains";
+import { formatUnits } from "viem";
+import { isSupportedV1ChainId } from "../../lib/deploy/chains";
 
+import { managerPublicClient } from "../../lib/manage/client";
 import { useWalletUI } from "../wallet/WalletUI";
 import {
   classificationLabel,
@@ -44,11 +44,6 @@ import { parseHumanToBaseUnits } from "../../lib/deploy/v1-config";
 import { tokenAbi } from "../../lib/token/factory";
 import { TxAction } from "./TxAction";
 import { useTokenData, type V1TokenState } from "./useTokenData";
-
-const readClient = createPublicClient({
-  chain: bscTestnet,
-  transport: http(),
-});
 
 function fmtAmount(value: bigint | null, decimals: number | null): string {
   if (value === null || decimals === null) return "—";
@@ -122,7 +117,13 @@ function AmountInput({
   );
 }
 
-function PairInspector({ token }: { token: `0x${string}` }) {
+function PairInspector({
+  token,
+  chainId,
+}: {
+  token: `0x${string}`;
+  chainId: number;
+}) {
   const [pair, setPair] = useState("");
   const [result, setResult] = useState<null | {
     flagged: boolean | null;
@@ -139,11 +140,18 @@ function PairInspector({ token }: { token: `0x${string}` }) {
     setChecking(true);
     try {
       const addr = pair as `0x${string}`;
+      // Reads must run on the dashboard's own chain; an unsupported chain
+      // yields no result rather than another chain's state.
+      const client = managerPublicClient(chainId);
+      if (!client) {
+        setResult(null);
+        return;
+      }
       const [flagged, blacklisted, whitelisted, code] = await Promise.all([
-        readClient.readContract({ address: token, abi: tokenAbi as never, functionName: "automatedMarketMakerPairs", args: [addr] } as never).catch(() => null),
-        readClient.readContract({ address: token, abi: tokenAbi as never, functionName: "isBlacklisted", args: [addr] } as never).catch(() => null),
-        readClient.readContract({ address: token, abi: tokenAbi as never, functionName: "isWhitelisted", args: [addr] } as never).catch(() => null),
-        readClient.getBytecode({ address: addr }).catch(() => null),
+        client.readContract({ address: token, abi: tokenAbi as never, functionName: "automatedMarketMakerPairs", args: [addr] } as never).catch(() => null),
+        client.readContract({ address: token, abi: tokenAbi as never, functionName: "isBlacklisted", args: [addr] } as never).catch(() => null),
+        client.readContract({ address: token, abi: tokenAbi as never, functionName: "isWhitelisted", args: [addr] } as never).catch(() => null),
+        client.getBytecode({ address: addr }).catch(() => null),
       ]);
       setResult({
         flagged: typeof flagged === "boolean" ? flagged : null,
@@ -274,7 +282,14 @@ export function TokenDashboard({
   );
   const blockQuery = useQuery({
     queryKey: ["manager-block", chainId],
-    queryFn: () => readClient.getBlockNumber(),
+    // Block height must come from the dashboard's chain: comparing a testnet
+    // block number against a mainnet launchBlock would corrupt the anti-bot
+    // window verdict.
+    queryFn: async () => {
+      const client = managerPublicClient(chainId);
+      if (!client) throw new Error("unsupported-chain");
+      return client.getBlockNumber();
+    },
     enabled: validAddress,
     retry: 1,
     staleTime: 15_000,
@@ -514,7 +529,7 @@ function DashboardBody({
               Pair configuration affects buy/sell detection. Only register addresses you
               verified as real liquidity pairs — an arbitrary address is never a safe pair.
             </p>
-            <PairInspector token={token} />
+            <PairInspector token={token} chainId={chainId} />
             <PairManageSection token={token} chainId={chainId} reason={reason} onDone={onDone} />
           </section>
 
@@ -726,7 +741,12 @@ function WhitelistEnforceSection({
     (async () => {
       setLoading(true);
       try {
-        const v = (await readClient.readContract({
+        const client = managerPublicClient(chainId);
+        if (!client) {
+          if (!cancelled) setEnforced(null);
+          return;
+        }
+        const v = (await client.readContract({
           address: token,
           abi: tokenAbi as never,
           functionName: "whitelistEnforced",
@@ -741,7 +761,7 @@ function WhitelistEnforceSection({
     return () => {
       cancelled = true;
     };
-  }, [token, revision]);
+  }, [token, chainId, revision]);
   return (
     <TxAction
       action="whitelistEnforce"

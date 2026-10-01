@@ -184,7 +184,7 @@ export function shouldScrollToSuccess(
   return phase === "success" && txHash !== null && seenTxHash !== txHash;
 }
 
-type SuccessPanelProps = {
+export type SuccessPanelProps = {
   name: string;
   symbol: string;
   token: `0x${string}`;
@@ -207,7 +207,7 @@ type SuccessPanelProps = {
  * Rendered ONLY from a confirmed receipt + decoded factory event — never
  * from storage alone (the restored path verifies first; see result.ts).
  */
-function SuccessPanel({
+export function SuccessPanel({
   name,
   symbol,
   token,
@@ -308,7 +308,7 @@ function SuccessPanel({
           )}
           <Link
             className="btn btn-ghost"
-            href={`/manage/97/${token}`}
+            href={`/manage/${intendedChainId}/${token}`}
           >
             Manage Token
           </Link>

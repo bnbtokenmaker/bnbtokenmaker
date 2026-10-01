@@ -2,11 +2,10 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { createPublicClient, http } from "viem";
-import { bsc, bscTestnet } from "viem/chains";
 
 import { tokenAbi } from "../../lib/token/factory";
 import { v1FactoryAddress } from "../../lib/token/factory";
+import { managerPublicClient } from "../../lib/manage/client";
 import {
   classifyInspected,
   type InspectionReads,
@@ -16,24 +15,10 @@ import {
   type TokenCapabilities,
 } from "../../lib/manage/permissions";
 import type { TokenClassification } from "../../lib/manage/classification";
-import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID, isSupportedV1ChainId } from "../../lib/deploy/chains";
-
-const SUPPORTED_CHAIN_IDS = [BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID];
-
-const mainnetReadClient = createPublicClient({
-  chain: bsc,
-  transport: http(),
-});
-
-const testnetReadClient = createPublicClient({
-  chain: bscTestnet,
-  transport: http(),
-});
+import { isSupportedV1ChainId } from "../../lib/deploy/chains";
 
 function clientForChain(chainId: number) {
-  if (chainId === BSC_MAINNET_CHAIN_ID) return mainnetReadClient;
-  if (chainId === BSC_TESTNET_CHAIN_ID) return testnetReadClient;
-  return null;
+  return managerPublicClient(chainId);
 }
 
 export type V1TokenState = {
