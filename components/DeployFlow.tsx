@@ -105,6 +105,11 @@ import {
   type DeployErrorCode,
 } from "../lib/deploy/errors";
 import {
+  estimateDeploymentGas,
+  type GasSnapshot,
+  type WalletRpcProvider,
+} from "../lib/deploy/gas-estimation";
+import {
   fetchAuthoritativeQuote,
   type AuthoritativeQuote,
 } from "../lib/deploy/quote-client";
@@ -159,13 +164,6 @@ export type DeployFlowProps = {
   sellTaxBps?: string;
   marketingWallet?: string;
   snipeBlocks?: string;
-};
-
-type GasSnapshot = {
-  gas: bigint;
-  gasPriceWei: bigint;
-  costWei: bigint;
-  balanceWei: bigint;
 };
 
 /** Server-quote reference price label (shared by preview + review so the
@@ -624,51 +622,21 @@ export function DeployFlow({
         if (error instanceof DeployFlowError) throw error;
         throw new DeployFlowError("simulation-reverted");
       }
-      try {
-        const [estimate, gasPrice, balance] = await Promise.all([
-          client.estimateGas({ account, to: v1Factory, data, value }),
-          client.getGasPrice(),
-          client.getBalance({ address: account }),
-        ]);
-        if (balance < value + estimate * gasPrice) {
-          throw new DeployFlowError("insufficient-gas-funds");
-        }
-        return {
-          gas: estimate,
-          gasPriceWei: gasPrice,
-          costWei: estimate * gasPrice,
-          balanceWei: balance,
-        };
-      } catch (error) {
-        if (error instanceof DeployFlowError) throw error;
-        // Public RPCs may return balance=0 during simulation, causing false
-        // "insufficient funds" errors. Retry with wallet provider if available.
-        if (connector && (error as Error).message?.includes("exceeds the balance")) {
-          try {
-            const provider = await connector.getProvider?.() as { request?: (args: { method: string; params: unknown[] }) => Promise<unknown> } | undefined;
-            if (provider?.request) {
-              const estimate = await provider.request({
-                method: "eth_estimateGas",
-                params: [{ from: account, to: v1Factory, data, value: "0x" + value.toString(16) }],
-              });
-              const gasPrice = await client.getGasPrice();
-              const balance = await provider.request({
-                method: "eth_getBalance",
-                params: [account, "latest"],
-              });
-              return {
-                gas: BigInt(estimate as string),
-                gasPriceWei: gasPrice,
-                costWei: BigInt(estimate as string) * gasPrice,
-                balanceWei: BigInt(balance as string),
-              };
+      return estimateDeploymentGas({
+        client,
+        account,
+        to: v1Factory,
+        data,
+        value,
+        resolveWalletProvider: connector
+          ? async () => {
+              const provider = (await connector.getProvider?.()) as
+                | Partial<WalletRpcProvider>
+                | undefined;
+              return provider?.request ? (provider as WalletRpcProvider) : undefined;
             }
-          } catch {
-            // Fall through to original error
-          }
-        }
-        throw new DeployFlowError("gas-estimate-failed");
-      }
+          : undefined,
+      });
     },
     enabled: isGasEstimateReady({
       onTestnet: onIntendedChain,
