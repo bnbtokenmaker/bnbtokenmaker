@@ -59,6 +59,7 @@ import {
 } from "../lib/wallet/switch";
 import { formatWeiBnbCompact, formatWeiBnbDisplay } from "../lib/pricing";
 import { clearDeployDraft } from "../lib/deploy/draft-transfer";
+import { deployNetworkSummary } from "../lib/deploy/deploy-copy";
 import { selectedFeatureIds, type FeatureSelection } from "../lib/pricing/presets";
 import { factoryAddress, v1FactoryAddress } from "../lib/token/factory";
 import {
@@ -197,6 +198,8 @@ type SuccessPanelProps = {
   feePaidWei?: string | null;
   /** Priced capability ids deployed with, for the success summary. */
   features?: readonly string[] | null;
+  /** Intended deployment chain, so the summary names the real network. */
+  intendedChainId: number;
 };
 
 /**
@@ -215,6 +218,7 @@ function SuccessPanel({
   panelRef,
   feePaidWei = null,
   features = null,
+  intendedChainId,
 }: SuccessPanelProps) {
   return (
     <div
@@ -262,7 +266,7 @@ function SuccessPanel({
         </div>
         <div>
           <dt>Network</dt>
-          <dd>BNB Smart Chain Testnet (97)</dd>
+          <dd>{deployNetworkSummary(intendedChainId)}</dd>
         </div>
         {feePaidWei !== null && (
           <div>
@@ -1123,7 +1127,7 @@ export function DeployFlow({
   const submitted = hasSubmittedTx(machine);
   const errorInfo =
     machine.phase === "error" && machine.errorCode
-      ? deployErrorMessage(machine.errorCode)
+      ? deployErrorMessage(machine.errorCode, intendedChainId)
       : null;
 
   const tokenNameView = tokenName.trim() || "Untitled";
@@ -1327,6 +1331,7 @@ export function DeployFlow({
                 onCopy={copyText}
                 onCreateAnother={createAnotherToken}
                 panelRef={null}
+                intendedChainId={intendedChainId}
               />
             ) : machine.phase === "success" && deployedToken ? (
               <SuccessPanel
@@ -1340,6 +1345,7 @@ export function DeployFlow({
                 panelRef={successRef}
                 feePaidWei={paidInfo?.feeWei ?? (authPkg ? authPkg.feeWei.toString(10) : null)}
                 features={featureIds}
+                intendedChainId={intendedChainId}
               />
             ) : (
               <>

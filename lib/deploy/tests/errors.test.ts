@@ -9,6 +9,7 @@ import {
   fallbackDeployMessage,
   DeployFlowError,
 } from "../errors";
+import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID } from "../chains";
 
 describe("deploy errors — sanitized user messages", () => {
   it("maps every code to a non-empty title and body", () => {
@@ -35,32 +36,67 @@ describe("deploy errors — sanitized user messages", () => {
       "mainnet-disabled",
     ] as const;
     for (const code of codes) {
-      const message = deployErrorMessage(code);
-      assert.ok(message.title.length > 0, code);
-      assert.ok(message.body.length > 0, code);
+      for (const chainId of [BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID]) {
+        const message = deployErrorMessage(code, chainId);
+        assert.ok(message.title.length > 0, `${code}/${chainId}`);
+        assert.ok(message.body.length > 0, `${code}/${chainId}`);
+        // Network-dependent copy must never leak an unresolved placeholder.
+        assert.ok(!/\{(network|asset)\}/.test(message.body), `${code}/${chainId}`);
+      }
     }
   });
 
   it("user rejection copy states nothing was submitted", () => {
-    const message = deployErrorMessage("user-rejected");
+    const message = deployErrorMessage("user-rejected", BSC_MAINNET_CHAIN_ID);
     assert.match(message.body, /no transaction was submitted/i);
   });
 
   it("receipt-timeout copy distinguishes submitted-but-unknown and forbids auto-send", () => {
-    const message = deployErrorMessage("receipt-timeout");
+    const message = deployErrorMessage("receipt-timeout", BSC_MAINNET_CHAIN_ID);
     assert.match(message.body, /was submitted/i);
     assert.match(message.body, /no additional transaction will be sent automatically/i);
   });
 
-  it("wrong-network copy names BNB Smart Chain Testnet and never a switch call", () => {
-    const message = deployErrorMessage("wrong-network");
-    assert.match(message.body, /BNB Smart Chain Testnet/);
-    assert.ok(!/wallet_switchEthereumChain/.test(message.body));
-    assert.ok(!/wallet_addEthereumChain/.test(message.body));
+  it("wrong-network copy names the intended chain and never a switch call", () => {
+    for (const chainId of [BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID]) {
+      const message = deployErrorMessage("wrong-network", chainId);
+      assert.match(message.body, /Please switch your wallet to /);
+      assert.ok(!/wallet_switchEthereumChain/.test(message.body));
+      assert.ok(!/wallet_addEthereumChain/.test(message.body));
+    }
+    const mainnet = deployErrorMessage("wrong-network", BSC_MAINNET_CHAIN_ID);
+    assert.match(mainnet.body, /BNB Smart Chain/);
+    assert.ok(!/Testnet/.test(mainnet.body), "mainnet must not say Testnet");
+    const testnet = deployErrorMessage("wrong-network", BSC_TESTNET_CHAIN_ID);
+    assert.match(testnet.body, /BNB Smart Chain Testnet/);
+  });
+
+  it("rpc-unavailable copy names the intended chain", () => {
+    const mainnet = deployErrorMessage("rpc-unavailable", BSC_MAINNET_CHAIN_ID);
+    assert.match(mainnet.body, /^BNB Smart Chain could not be reached/);
+    assert.ok(!/Testnet/.test(mainnet.body), "mainnet must not say Testnet");
+    const testnet = deployErrorMessage("rpc-unavailable", BSC_TESTNET_CHAIN_ID);
+    assert.match(testnet.body, /^BNB Smart Chain Testnet could not be reached/);
+  });
+
+  it("insufficient-gas-funds copy separates real BNB from worthless testnet BNB", () => {
+    const mainnet = deployErrorMessage(
+      "insufficient-gas-funds",
+      BSC_MAINNET_CHAIN_ID,
+    );
+    assert.match(mainnet.body, /enough BNB to pay the network fee/);
+    assert.match(mainnet.body, /Top up BNB/);
+    assert.ok(!/testnet/i.test(mainnet.body), "mainnet must not ask for testnet BNB");
+    const testnet = deployErrorMessage(
+      "insufficient-gas-funds",
+      BSC_TESTNET_CHAIN_ID,
+    );
+    assert.match(testnet.body, /enough testnet BNB to pay the network fee/);
+    assert.match(testnet.body, /Top up testnet BNB/);
   });
 
   it("mainnet copy is preview-only with no urgency language", () => {
-    const message = deployErrorMessage("mainnet-disabled");
+    const message = deployErrorMessage("mainnet-disabled", BSC_TESTNET_CHAIN_ID);
     assert.match(message.body, /not available yet/i);
     assert.ok(!/hurry|limited|soon|last chance/i.test(`${message.title} ${message.body}`));
   });

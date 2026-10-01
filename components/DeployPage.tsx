@@ -29,6 +29,7 @@ import {
 } from "../lib/deploy/draft-transfer";
 import { DEFAULT_FEAT_SELECTION } from "../lib/pricing/presets";
 import { resolveIntendedChainId } from "../lib/deploy/intended-chain";
+import { deployIntroCopy } from "../lib/deploy/deploy-copy";
 
 function subscribeDraft(): () => void {
   // The draft is written only during navigation (same-tab push to /deploy),
@@ -62,6 +63,9 @@ export function isUsableDeployDraft(stored: unknown): stored is DeployDraftV1 {
 export function DeployPage() {
   const draft = useDeployDraft();
   const valid = draft !== null && draftDomainValid(draft);
+  // Resolved once and shared by the intro copy and the deployment engine, so
+  // the advertised network can never disagree with the submitted chain.
+  const intendedChainId = resolveIntendedChainId();
 
   useEffect(() => {
     // Edge-entry gate only (missing/malformed/invalid draft): replace to
@@ -88,10 +92,7 @@ export function DeployPage() {
             <span className="dot"></span>Review &amp; Deploy
           </div>
           <h1>Review your token, then deploy it.</h1>
-          <p className="intro">
-            Check everything once — limits can&apos;t change later. Your wallet will ask you to
-            confirm one transaction on BNB Smart Chain Testnet.
-          </p>
+          <p className="intro">{deployIntroCopy(intendedChainId)}</p>
         </header>
 
         {valid && draft ? (
@@ -115,7 +116,7 @@ export function DeployPage() {
             sellTaxBps={draft.sellTaxBps ?? "0"}
             marketingWallet={draft.marketingWallet ?? ""}
             snipeBlocks={draft.snipeBlocks ?? "0"}
-            intendedChainId={resolveIntendedChainId()}
+            intendedChainId={intendedChainId}
           />
         ) : (
           <div className="deploy-card" role="status" aria-live="polite">

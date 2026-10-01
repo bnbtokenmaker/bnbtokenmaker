@@ -7,6 +7,8 @@
  * sanitized technical hint (no keys, seeds, or provider dumps, ever).
  */
 
+import { deployGasAssetName, deployNetworkName } from "./deploy-copy";
+
 export type DeployErrorCode =
   | "wallet-disconnected"
   | "wrong-network"
@@ -48,7 +50,7 @@ const MESSAGES: Record<DeployErrorCode, { title: string; body: string }> = {
   },
   "wrong-network": {
     title: "Wrong network",
-    body: "Please switch your wallet to BNB Smart Chain Testnet and try again. No transaction was submitted.",
+    body: "Please switch your wallet to {network} and try again. No transaction was submitted.",
   },
   "account-changed": {
     title: "Account changed",
@@ -64,7 +66,7 @@ const MESSAGES: Record<DeployErrorCode, { title: string; body: string }> = {
   },
   "insufficient-gas-funds": {
     title: "Not enough BNB for gas",
-    body: "Your wallet does not hold enough testnet BNB to pay the network fee. Top up testnet BNB and try again — no transaction was submitted.",
+    body: "Your wallet does not hold enough {asset} to pay the network fee. Top up {asset} and try again — no transaction was submitted.",
   },
   "gas-estimate-failed": {
     title: "Network fee could not be estimated",
@@ -76,7 +78,7 @@ const MESSAGES: Record<DeployErrorCode, { title: string; body: string }> = {
   },
   "rpc-unavailable": {
     title: "Network temporarily unavailable",
-    body: "BNB Smart Chain Testnet could not be reached. No additional transaction will be sent automatically — please review the details and try again.",
+    body: "{network} could not be reached. No additional transaction will be sent automatically — please review the details and try again.",
   },
   "tx-submit-failed": {
     title: "Transaction could not be sent",
@@ -124,11 +126,28 @@ const MESSAGES: Record<DeployErrorCode, { title: string; body: string }> = {
   },
 };
 
-export function deployErrorMessage(code: DeployErrorCode): {
+/**
+ * Render network-dependent copy for the intended chain.
+ *
+ * The intended chain id is required (not defaulted) so no caller can silently
+ * reintroduce a hardcoded network: on mainnet the copy must name BNB Smart
+ * Chain and real BNB, on testnet the Testnet equivalents.
+ */
+function resolveCopy(text: string, intendedChainId: number): string {
+  return text
+    .replaceAll("{network}", deployNetworkName(intendedChainId))
+    .replaceAll("{asset}", deployGasAssetName(intendedChainId));
+}
+
+export function deployErrorMessage(code: DeployErrorCode, intendedChainId: number): {
   title: string;
   body: string;
 } {
-  return MESSAGES[code];
+  const message = MESSAGES[code];
+  return {
+    title: message.title,
+    body: resolveCopy(message.body, intendedChainId),
+  };
 }
 
 export function isDeployErrorCode(value: unknown): value is DeployErrorCode {
