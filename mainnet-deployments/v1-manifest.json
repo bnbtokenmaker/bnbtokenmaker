@@ -1,0 +1,29 @@
+{
+  "schema": "bnbtokenmaker-mainnet-v1/1",
+  "chainId": 56,
+  "deployer": "0x8d3218A2cD42388CA627a9432e8b14F65d1c9990",
+  "swapLib": {
+    "address": "0xe3a51665ae1b7897f1ed05c3dc79f82f3df07f2a",
+    "txHash": null,
+    "blockNumber": null,
+    "codeSha256": null
+  },
+  "factory": {
+    "address": "0xd7de07de5113efa6cf0c213914ed7f0df60b682c",
+    "txHash": null,
+    "blockNumber": null,
+    "codeSha256": null,
+    "feeRecipient": "0x8d3218A2cD42388CA627a9432e8b14F65d1c9990",
+    "quoteSigner": "0x5Bb2eBf0D909fF18549DfB31E292aE28c4859D3f",
+    "maxFeeWei": "500000000000000000",
+    "generator": "BNBTokenMaker.com"
+  },
+  "compiler": {
+    "solc": "0.8.28",
+    "optimizer": { "enabled": true, "runs": 200 },
+    "evmVersion": "paris",
+    "metadata": { "bytecodeHash": "ipfs" }
+  },
+  "freezeReference": "phase-7d-testnet-pass",
+  "notes": "txHash and blockNumber for both contracts need read-only recovery from chain. codeSha256 needs computation from deployed bytecode."
+}

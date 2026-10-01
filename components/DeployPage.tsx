@@ -28,6 +28,7 @@ import {
   type DeployDraftV1,
 } from "../lib/deploy/draft-transfer";
 import { DEFAULT_FEAT_SELECTION } from "../lib/pricing/presets";
+import { resolveIntendedChainId } from "../lib/deploy/intended-chain";
 
 function subscribeDraft(): () => void {
   // The draft is written only during navigation (same-tab push to /deploy),
@@ -114,7 +115,7 @@ export function DeployPage() {
             sellTaxBps={draft.sellTaxBps ?? "0"}
             marketingWallet={draft.marketingWallet ?? ""}
             snipeBlocks={draft.snipeBlocks ?? "0"}
-            intendedChainId={97}
+            intendedChainId={resolveIntendedChainId()}
           />
         ) : (
           <div className="deploy-card" role="status" aria-live="polite">
