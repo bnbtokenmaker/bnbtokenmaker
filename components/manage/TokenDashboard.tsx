@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useConnection } from "wagmi";
 import { useQuery } from "@tanstack/react-query";
 import { createPublicClient, formatUnits, http } from "viem";
-import { bscTestnet } from "viem/chains";
+import { bsc, bscTestnet } from "viem/chains";
+import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID, isSupportedV1ChainId } from "../../lib/deploy/chains";
 
 import { useWalletUI } from "../wallet/WalletUI";
 import {
@@ -258,7 +259,7 @@ export function TokenDashboard({
   const { isConnected, address } = useConnection();
   const { open: openWallet } = useWalletUI();
   const validAddress =
-    /^0x[a-fA-F0-9]{40}$/.test(tokenAddress.trim()) && chainId === 97;
+    /^0x[a-fA-F0-9]{40}$/.test(tokenAddress.trim()) && isSupportedV1ChainId(chainId);
   const token = (validAddress ? tokenAddress.toLowerCase() : null) as `0x${string}` | null;
   const account = (
     isConnected && address && /^0x[a-fA-F0-9]{40}$/.test(address)
@@ -267,7 +268,7 @@ export function TokenDashboard({
   ) as `0x${string}` | null;
 
   const { data, isLoading, isError, refetch } = useTokenData(
-    validAddress ? 97 : null,
+    validAddress && isSupportedV1ChainId(chainId) ? chainId : null,
     token,
     account
   );
@@ -301,8 +302,8 @@ export function TokenDashboard({
       <div className="deploy-card" role="alert">
         <h3>Unsupported manager target</h3>
         <p className="deploy-muted">
-          {chainId !== 97
-            ? "Only BNB Smart Chain Testnet (97) is supported until mainnet activation. Chain 56 stays disabled."
+          {!isSupportedV1ChainId(chainId)
+            ? "Only BNB Smart Chain (56) and BNB Smart Chain Testnet (97) are supported."
             : "That is not a valid token contract address."}
         </p>
         <Link className="btn btn-ghost" href="/manage">Back to Token Manager</Link>

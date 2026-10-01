@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createPublicClient, http } from "viem";
-import { bscTestnet } from "viem/chains";
+import { bsc, bscTestnet } from "viem/chains";
 
 import { tokenAbi } from "../../lib/token/factory";
 import { v1FactoryAddress } from "../../lib/token/factory";
@@ -16,13 +16,25 @@ import {
   type TokenCapabilities,
 } from "../../lib/manage/permissions";
 import type { TokenClassification } from "../../lib/manage/classification";
+import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID, isSupportedV1ChainId } from "../../lib/deploy/chains";
 
-const SUPPORTED_CHAIN_ID = 97;
+const SUPPORTED_CHAIN_IDS = [BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID];
 
-const readClient = createPublicClient({
+const mainnetReadClient = createPublicClient({
+  chain: bsc,
+  transport: http(),
+});
+
+const testnetReadClient = createPublicClient({
   chain: bscTestnet,
   transport: http(),
 });
+
+function clientForChain(chainId: number) {
+  if (chainId === BSC_MAINNET_CHAIN_ID) return mainnetReadClient;
+  if (chainId === BSC_TESTNET_CHAIN_ID) return testnetReadClient;
+  return null;
+}
 
 export type V1TokenState = {
   totalMinted: bigint | null;
@@ -73,11 +85,14 @@ function asAddress(value: unknown): `0x${string}` | null {
 }
 
 async function readView(
+  chainId: number,
   address: `0x${string}`,
   functionName: string,
   args: readonly unknown[] = []
 ): Promise<unknown> {
-  return readClient.readContract({
+  const client = clientForChain(chainId);
+  if (!client) throw new Error("Unsupported chain");
+  return client.readContract({
     address,
     abi: tokenAbi as never,
     functionName,
@@ -86,6 +101,7 @@ async function readView(
 }
 
 async function fetchInspection(
+  chainId: number,
   address: `0x${string}`,
   account: `0x${string}` | null
 ): Promise<{ reads: InspectionReads; v1: V1TokenState }> {
@@ -101,7 +117,7 @@ async function fetchInspection(
     "swapThreshold", "liquidityShareBps", "marketingShareBps",
   ] as const;
   const settled = await Promise.allSettled(
-    names.map((fn) => readView(address, fn))
+    names.map((fn) => readView(chainId, address, fn))
   );
   const at = (fn: (typeof names)[number]): unknown => {
     const i = names.indexOf(fn);
@@ -111,13 +127,15 @@ async function fetchInspection(
   let code: string | null | undefined = null;
   let userBalance: bigint | null = null;
   try {
-    code = await readClient.getBytecode({ address });
+    const client = clientForChain(chainId);
+    if (!client) throw new Error("Unsupported chain");
+    code = await client.getBytecode({ address });
   } catch {
     code = null;
   }
   if (account) {
     try {
-      const bal = await readView(address, "balanceOf", [account]);
+      const bal = await readView(chainId, address, "balanceOf", [account]);
       if (typeof bal === "bigint") userBalance = bal;
     } catch {
       userBalance = null;
@@ -177,7 +195,7 @@ async function fetchInspection(
 }
 
 export function knownV1Factories(chainId: number): ReadonlySet<string> {
-  if (chainId !== SUPPORTED_CHAIN_ID) return new Set();
+  if (!isSupportedV1ChainId(chainId)) return new Set();
   const factory = v1FactoryAddress(chainId);
   return factory ? new Set([factory.toLowerCase()]) : new Set();
 }
@@ -193,14 +211,14 @@ export function useTokenData(
   refetch: () => void;
 } {
   const enabled =
-    chainId === SUPPORTED_CHAIN_ID &&
+    isSupportedV1ChainId(chainId) &&
     address !== null &&
     /^0x[a-fA-F0-9]{40}$/.test(address);
   const query = useQuery({
     queryKey: ["manager-token", chainId, address?.toLowerCase(), account?.toLowerCase() ?? null],
     queryFn: async (): Promise<TokenDashboardData> => {
       if (chainId === null || address === null) throw new Error("invalid-target");
-      const { reads, v1 } = await fetchInspection(address, account);
+      const { reads, v1 } = await fetchInspection(chainId, address, account);
       const classification = classifyInspected(reads, knownV1Factories(chainId));
       const owner = v1.owner;
       const capabilities: TokenCapabilities = {

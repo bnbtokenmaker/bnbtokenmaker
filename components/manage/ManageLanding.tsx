@@ -8,7 +8,10 @@ import { useWalletUI } from "../wallet/WalletUI";
 import { trackManagerEvent } from "../../lib/manage/analytics";
 import { loadRecents, saveRecent } from "./recents";
 
-const MANAGE_CHAIN_ID = 97;
+import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID, isSupportedV1ChainId } from "../../lib/deploy/chains";
+
+const MANAGE_CHAIN_IDS = [BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID];
+const DEFAULT_MANAGE_CHAIN_ID = BSC_MAINNET_CHAIN_ID;
 
 function isAddressString(value: string): boolean {
   return /^0x[a-fA-F0-9]{40}$/.test(value.trim());
@@ -26,7 +29,7 @@ export function ManageLanding() {
   const [input, setInput] = useState("");
   // Tab-local recents (storage-guarded, SSR-safe): absent on prerender,
   // hydrated from this device on mount — same precedent as deploy recovery.
-  const [recents, setRecents] = useState<string[]>(() => loadRecents(MANAGE_CHAIN_ID));
+  const [recents, setRecents] = useState<string[]>(() => loadRecents(DEFAULT_MANAGE_CHAIN_ID));
   const [onchain, setOnchain] = useState<Array<{
     contractAddress: string;
     tokenName: string;
@@ -39,7 +42,7 @@ export function ManageLanding() {
     if (openedTracked.current) return;
     openedTracked.current = true;
     trackManagerEvent(
-      { name: "manager_opened", chainId: MANAGE_CHAIN_ID },
+      { name: "manager_opened", chainId: DEFAULT_MANAGE_CHAIN_ID },
       typeof window !== "undefined" ? window.gtag : undefined
     );
   }, []);
@@ -55,7 +58,7 @@ export function ManageLanding() {
       }
       try {
         const response = await fetch(
-          `/api/deployments?deployer=${address.toLowerCase()}&chainId=${MANAGE_CHAIN_ID}&limit=8`
+          `/api/deployments?deployer=${address.toLowerCase()}&chainId=${DEFAULT_MANAGE_CHAIN_ID}&limit=8`
         );
         if (!response.ok) return;
         const body = (await response.json()) as {
@@ -90,8 +93,8 @@ export function ManageLanding() {
   const go = (token: string) => {
     const normalized = token.trim().toLowerCase();
     if (!isAddressString(normalized)) return;
-    setRecents(saveRecent(MANAGE_CHAIN_ID, normalized));
-    router.push(`/manage/${MANAGE_CHAIN_ID}/${normalized}`);
+    setRecents(saveRecent(DEFAULT_MANAGE_CHAIN_ID, normalized));
+    router.push(`/manage/${DEFAULT_MANAGE_CHAIN_ID}/${normalized}`);
   };
 
   return (

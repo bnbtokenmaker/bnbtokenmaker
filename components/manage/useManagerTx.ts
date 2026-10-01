@@ -3,7 +3,8 @@
 import { useCallback, useState } from "react";
 import { useConnection } from "wagmi";
 import { createPublicClient, http } from "viem";
-import { bscTestnet } from "viem/chains";
+import { bsc, bscTestnet } from "viem/chains";
+import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID } from "../../lib/deploy/chains";
 
 import {
   ProviderAccountMismatchError,
