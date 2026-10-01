@@ -641,6 +641,32 @@ export function DeployFlow({
         };
       } catch (error) {
         if (error instanceof DeployFlowError) throw error;
+        // Public RPCs may return balance=0 during simulation, causing false
+        // "insufficient funds" errors. Retry with wallet provider if available.
+        if (connector && (error as Error).message?.includes("exceeds the balance")) {
+          try {
+            const provider = await connector.getProvider?.() as { request?: (args: { method: string; params: unknown[] }) => Promise<unknown> } | undefined;
+            if (provider?.request) {
+              const estimate = await provider.request({
+                method: "eth_estimateGas",
+                params: [{ from: account, to: v1Factory, data, value: "0x" + value.toString(16) }],
+              });
+              const gasPrice = await client.getGasPrice();
+              const balance = await provider.request({
+                method: "eth_getBalance",
+                params: [account, "latest"],
+              });
+              return {
+                gas: BigInt(estimate as string),
+                gasPriceWei: gasPrice,
+                costWei: BigInt(estimate as string) * gasPrice,
+                balanceWei: BigInt(balance as string),
+              };
+            }
+          } catch {
+            // Fall through to original error
+          }
+        }
         throw new DeployFlowError("gas-estimate-failed");
       }
     },
