@@ -45,6 +45,9 @@ jobs:
         env:
           # Public GA4 measurement ID, baked in at build time (NEXT_PUBLIC_*).
           NEXT_PUBLIC_GA_MEASUREMENT_ID: "G-0B1LCDWHW9"
+          # Public BSC Mainnet chain ID and factory address (NEXT_PUBLIC_*).
+          NEXT_PUBLIC_DEPLOY_CHAIN_ID: "56"
+          NEXT_PUBLIC_V1_MAINNET_FACTORY_ADDRESS: "0xd7de07de5113efa6cf0c213914ed7f0df60b682c"
         run: npm run build
 
       - name: Assemble deploy artifact
