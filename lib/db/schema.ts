@@ -77,6 +77,57 @@ export const deployments = pgTable(
 export type DeploymentRow = typeof deployments.$inferSelect;
 export type DeploymentInsert = typeof deployments.$inferInsert;
 
+/**
+ * Phase C25 BscScan verification state (mirrors db/migrations/0005).
+ *
+ * One row per contract per chain: duplicate verification requests reuse
+ * the row (existing GUID/status) instead of submitting upstream again.
+ * Stores GUID + status + sanitized error codes ONLY — never API keys,
+ * source code, constructor arguments, or client-supplied material.
+ */
+export const VERIFICATION_STATUS_VALUES = [
+  "not_started",
+  "submitting",
+  "pending",
+  "verified",
+  "failed",
+] as const;
+
+export type VerificationStatus = (typeof VERIFICATION_STATUS_VALUES)[number];
+
+export const contractVerifications = pgTable(
+  "contract_verifications",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    chainId: integer("chain_id").notNull(),
+    /** Lowercase hex address. */
+    contractAddress: text("contract_address").notNull(),
+    deploymentTxHash: text("deployment_tx_hash"),
+    guid: text("guid"),
+    status: text("status").notNull().default("not_started"),
+    attempts: integer("attempts").notNull().default(0),
+    /** Sanitized error code only — never upstream response text. */
+    lastErrorCode: text("last_error_code"),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("contract_verifications_identity_unique").on(
+      table.chainId,
+      table.contractAddress
+    ),
+    index("contract_verifications_status_idx").on(table.status),
+  ]
+);
+
+export type ContractVerificationRow = typeof contractVerifications.$inferSelect;
+export type ContractVerificationInsert = typeof contractVerifications.$inferInsert;
+
 export const adminUsers = pgTable("admin_users", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   /** Lowercase unique login identifier. */
