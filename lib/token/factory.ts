@@ -131,6 +131,11 @@ export function parseTokenCreatedLog(log: {
   };
 }
 
+/**
+ * @deprecated Phase 6B testnet-only helper retained for historical tests.
+ * Do not use for live UI. Use `v1ExplorerTokenUrl(chainId, token)` from
+ * `../deploy/chains` instead.
+ */
 export function explorerTokenUrl(
   chainId: number,
   token: string,

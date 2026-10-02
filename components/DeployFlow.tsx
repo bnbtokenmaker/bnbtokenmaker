@@ -116,8 +116,6 @@ import {
 } from "../lib/deploy/quote-client";
 import {
   clearPendingDeployment,
-  explorerTokenPageUrl,
-  explorerTxUrl,
   findDeployedTokenAddress,
   findDeploymentPaid,
   isReceiptSuccess,
@@ -128,7 +126,7 @@ import {
   type PendingDeployment,
 } from "../lib/deploy/tx";
 import { requestDeploymentRecord } from "../lib/deploy/record-client";
-import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID, isSupportedV1ChainId } from "../lib/deploy/chains";
+import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID, isSupportedV1ChainId, v1ExplorerTokenUrl, v1ExplorerTxUrl } from "../lib/deploy/chains";
 
 const RECEIPT_TIMEOUT_MS = 120_000;
 
@@ -285,10 +283,10 @@ export function SuccessPanel({
         )}
       </dl>
       <div className="deploy-actions deploy-success-actions">
-        {explorerTokenPageUrl(token) && (
+        {v1ExplorerTokenUrl(intendedChainId, token) && (
           <a
             className="btn btn-dark btn-deploy"
-            href={explorerTokenPageUrl(token) ?? ""}
+            href={v1ExplorerTokenUrl(intendedChainId, token) ?? ""}
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -296,10 +294,10 @@ export function SuccessPanel({
           </a>
         )}
         <span className="deploy-actions-row">
-          {txHash && explorerTxUrl(txHash) && (
+          {txHash && v1ExplorerTxUrl(intendedChainId, txHash) && (
             <a
               className="btn btn-ghost"
-              href={explorerTxUrl(txHash) ?? ""}
+              href={v1ExplorerTxUrl(intendedChainId, txHash) ?? ""}
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -1359,11 +1357,11 @@ export function DeployFlow({
                     re-reads the public receipt only — no wallet confirmation and no new
                     transaction.
                   </p>
-                  {displayedResult && explorerTxUrl(displayedResult.txHash) && (
+                  {displayedResult && v1ExplorerTxUrl(intendedChainId, displayedResult.txHash) && (
                     <p className="deploy-muted">
                       <a
                         className="linklike"
-                        href={explorerTxUrl(displayedResult.txHash) ?? ""}
+                        href={v1ExplorerTxUrl(intendedChainId, displayedResult.txHash) ?? ""}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
@@ -1511,9 +1509,9 @@ export function DeployFlow({
               >
                 {copied === "tx" ? "Copied" : "Copy"}
               </button>
-              {explorerTxUrl(machine.txHash) && (
+              {v1ExplorerTxUrl(intendedChainId, machine.txHash) && (
                 <a
-                  href={explorerTxUrl(machine.txHash) ?? ""}
+                  href={v1ExplorerTxUrl(intendedChainId, machine.txHash) ?? ""}
                   target="_blank"
                   rel="noopener noreferrer"
                 >

@@ -78,3 +78,12 @@ export function v1ExplorerAddressUrl(
   if (!descriptor || !/^0x[a-fA-F0-9]{40}$/.test(address)) return null;
   return `${descriptor.explorerUrl}/address/${address}`;
 }
+
+export function v1ExplorerTokenUrl(
+  chainId: number | null | undefined,
+  token: string
+): string | null {
+  const descriptor = v1ChainDescriptor(chainId);
+  if (!descriptor || !/^0x[a-fA-F0-9]{40}$/.test(token)) return null;
+  return `${descriptor.explorerUrl}/token/${token}`;
+}

@@ -19,16 +19,17 @@ import {
  */
 
 const TOKEN = "0x1234567890abcdef1234567890abcdef12345678";
+const TX_HASH = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 const noop = () => {};
 
-function renderSuccess(intendedChainId: number, token: string = TOKEN): string {
+function renderSuccess(intendedChainId: number, token: string = TOKEN, txHash: string | null = TX_HASH): string {
   return renderToStaticMarkup(
     createElement(SuccessPanel, {
       name: "Sample Token",
       symbol: "SAMPLE",
       token: token as `0x${string}`,
-      txHash: null,
+      txHash: txHash as `0x${string}` | null,
       copied: null,
       onCopy: noop,
       onCreateAnother: noop,
@@ -43,6 +44,10 @@ function renderSuccess(intendedChainId: number, token: string = TOKEN): string {
 function manageHref(html: string): string | null {
   const match = html.match(/href="(\/manage\/[^"]*)"/);
   return match ? match[1] : null;
+}
+
+function explorerHrefs(html: string): string[] {
+  return Array.from(html.matchAll(/href="(https:\/\/[^"]*bscscan\.com[^"]*)"/g), (match) => match[1]);
 }
 
 describe("deploy success — Manage Token deep link follows intendedChainId", () => {
@@ -92,5 +97,23 @@ describe("deploy success — Manage Token deep link follows intendedChainId", ()
     const anchor = html.match(/<a[^>]*\/manage\/[^>]*>/);
     assert.ok(anchor, "expected a manager anchor");
     assert.ok(!anchor[0].includes("target="), "manager CTA must not open a new tab");
+  });
+
+  it("routes mainnet explorer links to bscscan.com", () => {
+    const links = explorerHrefs(renderSuccess(BSC_MAINNET_CHAIN_ID));
+    assert.ok(links.includes(`https://bscscan.com/token/${TOKEN}`));
+    assert.ok(links.includes(`https://bscscan.com/tx/${TX_HASH}`));
+    assert.ok(!links.some((link) => link.includes("testnet.bscscan.com")));
+  });
+
+  it("routes testnet explorer links to testnet.bscscan.com", () => {
+    const links = explorerHrefs(renderSuccess(BSC_TESTNET_CHAIN_ID));
+    assert.ok(links.includes(`https://testnet.bscscan.com/token/${TOKEN}`));
+    assert.ok(links.includes(`https://testnet.bscscan.com/tx/${TX_HASH}`));
+  });
+
+  it("omits explorer links for malformed deployment values", () => {
+    const links = explorerHrefs(renderSuccess(BSC_MAINNET_CHAIN_ID, "0x123", "0x123"));
+    assert.deepEqual(links, []);
   });
 });

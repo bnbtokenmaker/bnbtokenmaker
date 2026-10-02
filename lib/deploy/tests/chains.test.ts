@@ -8,6 +8,7 @@ import {
   v1ChainDescriptor,
   v1ExplorerTxUrl,
   v1ExplorerAddressUrl,
+  v1ExplorerTokenUrl,
 } from "../chains";
 
 describe("chains", () => {
@@ -43,10 +44,21 @@ describe("chains", () => {
     assert.equal(txUrl, "https://bscscan.com/tx/0x" + "a".repeat(64));
     const addrUrl = v1ExplorerAddressUrl(BSC_MAINNET_CHAIN_ID, "0x" + "b".repeat(40));
     assert.equal(addrUrl, "https://bscscan.com/address/0x" + "b".repeat(40));
+    const tokenUrl = v1ExplorerTokenUrl(BSC_MAINNET_CHAIN_ID, "0x" + "c".repeat(40));
+    assert.equal(tokenUrl, "https://bscscan.com/token/0x" + "c".repeat(40));
   });
 
   it("builds correct explorer URLs for testnet", () => {
     const txUrl = v1ExplorerTxUrl(BSC_TESTNET_CHAIN_ID, "0x" + "a".repeat(64));
     assert.equal(txUrl, "https://testnet.bscscan.com/tx/0x" + "a".repeat(64));
+    const tokenUrl = v1ExplorerTokenUrl(BSC_TESTNET_CHAIN_ID, "0x" + "c".repeat(40));
+    assert.equal(tokenUrl, "https://testnet.bscscan.com/token/0x" + "c".repeat(40));
+  });
+
+  it("fails closed for unsupported chains and malformed explorer inputs", () => {
+    assert.equal(v1ExplorerTxUrl(1, "0x" + "a".repeat(64)), null);
+    assert.equal(v1ExplorerTxUrl(BSC_MAINNET_CHAIN_ID, "0x123"), null);
+    assert.equal(v1ExplorerTokenUrl(137, "0x" + "c".repeat(40)), null);
+    assert.equal(v1ExplorerTokenUrl(BSC_TESTNET_CHAIN_ID, "not-an-address"), null);
   });
 });

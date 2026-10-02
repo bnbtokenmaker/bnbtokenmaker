@@ -43,7 +43,7 @@ import { trackManagerEvent } from "../../lib/manage/analytics";
 import { parseHumanToBaseUnits } from "../../lib/deploy/v1-config";
 import { tokenAbi } from "../../lib/token/factory";
 import { TxAction } from "./TxAction";
-import { useTokenData, type V1TokenState } from "./useTokenData";
+import { INSPECTION_STATUS_COPY, useTokenData, type V1TokenState } from "./useTokenData";
 
 function fmtAmount(value: bigint | null, decimals: number | null): string {
   if (value === null || decimals === null) return "—";
@@ -275,7 +275,7 @@ export function TokenDashboard({
       : null
   ) as `0x${string}` | null;
 
-  const { data, isLoading, isError, refetch } = useTokenData(
+  const { data, isLoading, isRecovering, isInconclusive, isError, refetch } = useTokenData(
     validAddress && isSupportedV1ChainId(chainId) ? chainId : null,
     token,
     account
@@ -341,7 +341,17 @@ export function TokenDashboard({
         </div>
       ) : null}
       {isLoading && (
-        <div className="deploy-card" role="status"><h3>Inspecting token…</h3></div>
+        <div className="deploy-card" role="status"><h3>{INSPECTION_STATUS_COPY.loading.title}</h3></div>
+      )}
+      {isRecovering && (
+        <div className="deploy-card" role="status"><h3>{INSPECTION_STATUS_COPY.recovering.title}</h3></div>
+      )}
+      {isInconclusive && (
+        <div className="deploy-card" role="alert">
+          <h3>{INSPECTION_STATUS_COPY.inconclusive.title}</h3>
+          <p className="deploy-muted">{INSPECTION_STATUS_COPY.inconclusive.body}</p>
+          <button type="button" className="btn btn-ghost" onClick={() => refetch()}>Retry</button>
+        </div>
       )}
       {isError && (
         <div className="deploy-card" role="alert">

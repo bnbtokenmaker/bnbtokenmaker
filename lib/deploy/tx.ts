@@ -118,11 +118,21 @@ export function findDeploymentPaid(
   return null;
 }
 
+/**
+ * @deprecated Chain-blind legacy helper retained for historical tests.
+ * Do not use for live UI: it always uses the Phase 6B testnet explorer.
+ * Use `v1ExplorerTxUrl(chainId, txHash)` from `../deploy/chains` instead.
+ */
 export function explorerTxUrl(txHash: string): string | null {
   if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) return null;
   return `${DEPLOY_EXPLORER}/tx/${txHash}`;
 }
 
+/**
+ * @deprecated Chain-blind legacy helper retained for historical tests.
+ * Do not use for live UI: it always uses the Phase 6B testnet explorer.
+ * Use `v1ExplorerTokenUrl(chainId, token)` from `../deploy/chains` instead.
+ */
 export function explorerTokenPageUrl(token: string): string | null {
   if (!/^0x[a-fA-F0-9]{40}$/.test(token)) return null;
   return `${DEPLOY_EXPLORER}/token/${token}`;
