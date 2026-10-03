@@ -40,6 +40,12 @@ export type BscScanErrorCode =
   | "timeout"
   | "rate-limited"
   | "indexing-delay"
+  | "upstream-exception"
+  | "empty-status"
+  | "key-invalid"
+  | "key-throttled"
+  | "pool-exhausted"
+  | "chain-not-covered"
   | "malformed-response"
   | "submission-rejected"
   | "already-verified"
@@ -285,6 +291,12 @@ export async function checkVerificationStatus(input: {
   const text = typeof result === "string" ? result : "";
   const lower = text.toLowerCase();
   void status;
+  // Empty or non-string results carry no verdict at all (common while
+  // BscScan is still ingesting a fresh submission). Retryable and
+  // explicit — never silently terminal, never silently pending-forever.
+  if (text.trim() === "") {
+    throw new BscScanError("empty-status", true, "upstream returned no status text");
+  }
   if (lower.includes("pass") && lower.includes("verif")) {
     return { state: "verified", alreadyKnown: false };
   }
@@ -297,6 +309,19 @@ export async function checkVerificationStatus(input: {
   if (lower.includes("rate limit") || lower.includes("max rate") || lower.includes("exceeded")) {
     throw new BscScanError("rate-limited", true, sanitize(text) || "upstream rate limit");
   }
+  // IP-level key throttle resets on its own (~30 s per upstream docs):
+  // retryable, but tracked separately from quota rate limits. Must be
+  // checked BEFORE the invalid-key arm: the throttle message contains
+  // the words "invalid api key".
+  if (lower.includes("too many invalid")) {
+    throw new BscScanError("key-throttled", true, sanitize(text) || "api key throttled");
+  }
+  // An unusable key is an operator/configuration fault, not a transient
+  // one: surface it distinctly and do NOT retry blindly or file it as
+  // ordinary pending. Fresh requests after a key fix proceed normally.
+  if (lower.includes("invalid api key")) {
+    throw new BscScanError("key-invalid", false, "upstream rejected the API key");
+  }
   if (lower.includes("invalid") && lower.includes("guid")) {
     // A GUID BscScan does not know yet usually means propagation delay
     // right after submission — retryable within the route's attempt cap.
@@ -304,6 +329,31 @@ export async function checkVerificationStatus(input: {
   }
   if (lower.includes("fail") || lower.includes("unable to verify") || lower.includes("mismatch")) {
     return { state: "failed", terminal: true, detail: sanitize(text) || "verification failed" };
+  }
+  // Shared-pool exhaustion resets on its own (upstream publishes the
+  // reset time): retryable with its own code, not generic pending.
+  if (lower.includes("community free api limit") || lower.includes("free api limit reached")) {
+    throw new BscScanError("pool-exhausted", true, sanitize(text) || "shared API pool exhausted");
+  }
+  // The key's plan does not cover this chain. Retrying cannot help —
+  // only a plan change does — so this is terminal-but-recoverable:
+  // surfaced honestly, and a fresh request after the fix proceeds
+  // (deliberately NOT in the terminal-code set that blocks resubmission).
+  if (
+    lower.includes("free api access is not supported") ||
+    lower.includes("not supported for this chain")
+  ) {
+    throw new BscScanError("chain-not-covered", false, "api plan does not cover this chain");
+  }
+  // Upstream-side timeouts/server-busy: retryable, never terminal.
+  if (lower.includes("timeout") || lower.includes("server too busy")) {
+    throw new BscScanError("timeout", true, sanitize(text) || "upstream timeout");
+  }
+  // BscScan-side job failure the explorer itself cannot classify. Kept
+  // retryable and explicit (bounded by the caller's attempt budget) so an
+  // unrecognized backend state can never silently stall or silently fail.
+  if (lower.replace(/\s+/g, " ").includes("other exception")) {
+    throw new BscScanError("upstream-exception", true, sanitize(text) || "upstream exception");
   }
   // Unknown verdict text: never terminal by default — the route's attempt
   // cap stops unbounded polling.

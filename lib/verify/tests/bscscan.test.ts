@@ -439,3 +439,120 @@ describe("server-only boundary", () => {
     assert.deepEqual(offenders, []);
   });
 });
+
+describe("status classifier — production and documented variants", () => {
+  function statusFetch(result: unknown) {
+    return stubFetch(() => jsonBody({ status: "0", message: "NOTOK", result }));
+  }
+
+  async function classifiedAs(result: unknown): Promise<BscScanError | { state: string }> {
+    let outcome: unknown = null;
+    await withKey(async () => {
+      try {
+        outcome = await checkVerificationStatus({
+          chainId: 56,
+          guid: GUID,
+          fetchImpl: statusFetch(result),
+        });
+      } catch (error) {
+        outcome = error;
+      }
+    });
+    return outcome as BscScanError | { state: string };
+  }
+
+  it("classifies the exact production response as retryable upstream-exception", async () => {
+    // Real Etherscan V2 checkverifystatus response captured in production
+    // (chain 56 FULL TEST deployment). Committed verbatim as a regression
+    // fixture so this failure can never silently return to status-unknown.
+    const outcome = await classifiedAs("Other Exception - Please contact us for more information.");
+    assert.ok(outcome instanceof BscScanError);
+    assert.equal(outcome.code, "upstream-exception");
+    assert.equal(outcome.retryable, true);
+  });
+
+  it("classifies empty and null results as retryable empty-status", async () => {
+    for (const result of ["", "   ", null]) {
+      const outcome = await classifiedAs(result);
+      assert.ok(outcome instanceof BscScanError, JSON.stringify(result));
+      assert.equal((outcome as BscScanError).code, "empty-status");
+      assert.equal((outcome as BscScanError).retryable, true);
+    }
+  });
+
+  it("surfaces Invalid API Key distinctly and non-retryable", async () => {
+    const outcome = await classifiedAs("Invalid API Key");
+    assert.ok(outcome instanceof BscScanError);
+    assert.equal(outcome.code, "key-invalid");
+    assert.equal(outcome.retryable, false);
+  });
+
+  it("classifies key throttling as retryable with its own code", async () => {
+    const outcome = await classifiedAs("Too many invalid api key attempts, please try again later");
+    assert.ok(outcome instanceof BscScanError);
+    assert.equal(outcome.code, "key-throttled");
+    assert.equal(outcome.retryable, true);
+  });
+
+  it("classifies shared-pool exhaustion as retryable", async () => {
+    const outcome = await classifiedAs(
+      "Community Free API limit reached. Resets 2026-06-24 12:00:00 UTC."
+    );
+    assert.ok(outcome instanceof BscScanError);
+    assert.equal(outcome.code, "pool-exhausted");
+    assert.equal(outcome.retryable, true);
+  });
+
+  it("classifies unsupported free-chain responses as non-retryable", async () => {
+    const outcome = await classifiedAs(
+      "Free API access is not supported for this chain. Please upgrade your api plan."
+    );
+    assert.ok(outcome instanceof BscScanError);
+    assert.equal(outcome.code, "chain-not-covered");
+    assert.equal(outcome.retryable, false);
+  });
+
+  it("classifies timeout variants as retryable", async () => {
+    for (const result of [
+      "Query Timeout occured. Please select a smaller result dataset",
+      "Unexpected err, timeout occurred or server too busy. Please try again later",
+    ]) {
+      const outcome = await classifiedAs(result);
+      assert.ok(outcome instanceof BscScanError, result);
+      assert.equal((outcome as BscScanError).code, "timeout");
+      assert.equal((outcome as BscScanError).retryable, true);
+    }
+  });
+
+  it("keeps genuinely terminal failures terminal", async () => {
+    const outcome = await classifiedAs("Fail - Unable to verify: bytecode mismatch");
+    assert.ok(!(outcome instanceof BscScanError));
+    assert.deepEqual(outcome, {
+      state: "failed",
+      terminal: true,
+      detail: "Fail - Unable to verify: bytecode mismatch",
+    });
+  });
+
+  it("keeps arbitrary unknown responses as status-unknown fallback", async () => {
+    const outcome = await classifiedAs("Some entirely novel backend message 12345");
+    assert.ok(outcome instanceof BscScanError);
+    assert.equal(outcome.code, "status-unknown");
+    assert.equal(outcome.retryable, true);
+  });
+
+  it("never leaks key material in the new codes", async () => {
+    await withKey(async () => {
+      for (const result of [
+        "Other Exception - Please contact us for more information.",
+        "",
+        "Invalid API Key",
+        "Free API access is not supported for this chain.",
+      ]) {
+        const outcome = await classifiedAs(result);
+        assert.ok(outcome instanceof BscScanError);
+        assert.ok(!outcome.message.includes(SENTINEL_KEY), outcome.code);
+      }
+    });
+  });
+});

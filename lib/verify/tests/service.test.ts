@@ -414,3 +414,208 @@ describe("pollVerificationStatus", () => {
     );
   });
 });
+
+describe("poll reconciliation", () => {
+  const STALE_NOW = () => Date.now() + 3600_000;
+
+  function recordingStub(
+    calls: string[],
+    checkResult: unknown,
+    sourceResult: unknown = [{ SourceCode: "" }]
+  ): FetchImpl {
+    return (async (input: string) => {
+      calls.push(input);
+      if (input.includes("getsourcecode")) {
+        return jsonBody({ status: "1", message: "OK", result: sourceResult });
+      }
+      if (input.includes("checkverifystatus")) {
+        return jsonBody({ status: "0", message: "NOTOK", result: checkResult });
+      }
+      return jsonBody({ status: "1", message: "OK", result: "unused-guid" });
+    }) as FetchImpl;
+  }
+
+  async function seededPendingRow(attempts = 1) {
+    const d = deps({});
+    await d.store.getOrCreate(56, TOKEN, TX);
+    await d.store.updateState(56, TOKEN, {
+      status: "pending",
+      guid: GUID,
+      attempts,
+      lastErrorCode: "status-unknown",
+    });
+    return d;
+  }
+
+  async function pollWithThrowing(
+    checkResult: unknown,
+    sourceResult: unknown = [{ SourceCode: "" }],
+    seedAttempts = 1
+  ) {
+    const calls: string[] = [];
+    const d = await seededPendingRow(seedAttempts);
+    (d as unknown as { nowMs: unknown }).nowMs = STALE_NOW;
+    (d as unknown as { fetchImpl: unknown }).fetchImpl = recordingStub(calls, checkResult, sourceResult);
+    const original = process.env.BSCSCAN_API_KEY;
+    process.env.BSCSCAN_API_KEY = "test-key";
+    try {
+      const state = await pollVerificationStatus(56, TOKEN, d as never);
+      return { state, calls, store: d.store, threw: null as unknown };
+    } catch (error) {
+      return { state: null as never, calls, store: d.store, threw: error };
+    } finally {
+      if (original === undefined) delete process.env.BSCSCAN_API_KEY;
+      else process.env.BSCSCAN_API_KEY = original;
+    }
+  }
+  async function pollWith(
+    checkResult: unknown,
+    sourceResult: unknown = [{ SourceCode: "" }],
+    seedAttempts = 1
+  ) {
+    const calls: string[] = [];
+    const d = await seededPendingRow(seedAttempts);
+    (d as unknown as { nowMs: unknown }).nowMs = STALE_NOW;
+    (d as unknown as { fetchImpl: unknown }).fetchImpl = recordingStub(calls, checkResult, sourceResult);
+    const original = process.env.BSCSCAN_API_KEY;
+    process.env.BSCSCAN_API_KEY = "test-key";
+    try {
+      const state = await pollVerificationStatus(56, TOKEN, d as never);
+      return { state, calls, store: d.store };
+    } finally {
+      if (original === undefined) delete process.env.BSCSCAN_API_KEY;
+      else process.env.BSCSCAN_API_KEY = original;
+    }
+  }
+
+  it("promotes upstream-exception to verified when source is published", async () => {
+    const { state, store } = await pollWith(
+      "Other Exception - Please contact us for more information.",
+      [{ SourceCode: "{{standard-json}}" }]
+    );
+    assert.equal(state.status, "verified");
+    assert.equal(state.alreadyKnown, true);
+    assert.ok(state.verifiedAt !== null);
+    assert.equal(state.lastErrorCode, null);
+    const row = await store.findByContract(56, TOKEN);
+    assert.equal(row?.status, "verified");
+    assert.equal(row?.guid, null);
+  });
+
+  it("promotes status-unknown and empty-status to verified on positive source", async () => {
+    for (const checkResult of ["Some novel backend message", ""]) {
+      const { state } = await pollWith(checkResult, [{ SourceCode: "{{x}}" }]);
+      assert.equal(state.status, "verified", JSON.stringify(checkResult));
+      assert.equal(state.alreadyKnown, true);
+    }
+  });
+
+  it("retains pending with the original code when source is still absent", async () => {
+    for (const [checkResult, code] of [
+      ["Other Exception - Please contact us for more information.", "upstream-exception"],
+      ["Weird new backend wording", "status-unknown"],
+      ["", "empty-status"],
+    ] as const) {
+      const { state } = await pollWith(checkResult, [{ SourceCode: "" }]);
+      assert.equal(state.status, "pending", code);
+      assert.equal(state.lastErrorCode, code);
+    }
+  });
+
+  it("stays pending with a sanitized code when reconciliation itself fails", async () => {
+    const calls: string[] = [];
+    const d = await seededPendingRow();
+    (d as unknown as { nowMs: unknown }).nowMs = STALE_NOW;
+    (d as unknown as { fetchImpl: unknown }).fetchImpl = (async (input: string) => {
+      calls.push(input);
+      if (input.includes("getsourcecode")) throw new Error("fetch failed");
+      return jsonBody({ status: "0", message: "NOTOK", result: "Other Exception" });
+    }) as FetchImpl;
+    const original = process.env.BSCSCAN_API_KEY;
+    process.env.BSCSCAN_API_KEY = "test-key";
+    try {
+      const state = await pollVerificationStatus(56, TOKEN, d as never);
+      assert.equal(state.status, "pending");
+      assert.equal(state.lastErrorCode, "upstream-exception");
+    } finally {
+      if (original === undefined) delete process.env.BSCSCAN_API_KEY;
+      else process.env.BSCSCAN_API_KEY = original;
+    }
+    void calls;
+  });
+
+  it("surfaces key-invalid honestly instead of endless pending", async () => {
+    // Non-retryable poll failures throw (the route maps them to 503);
+    // the row must still record the honest terminal-ish state.
+    const { store, threw } = await pollWithThrowing("Invalid API Key", [{ SourceCode: "" }]);
+    assert.ok(threw instanceof VerifyServiceError);
+    assert.equal(threw.code, "key-invalid");
+    assert.equal(threw.retryable, false);
+    const row = await store.findByContract(56, TOKEN);
+    assert.equal(row?.status, "failed");
+    assert.equal(row?.lastErrorCode, "key-invalid");
+    assert.equal(row?.guid, GUID, "guid retained for forensics");
+  });
+
+  it("terminal Fail never consults getsourcecode", async () => {
+    const calls: string[] = [];
+    const d = await seededPendingRow();
+    (d as unknown as { nowMs: unknown }).nowMs = STALE_NOW;
+    (d as unknown as { fetchImpl: unknown }).fetchImpl = recordingStub(
+      calls,
+      "Fail - Unable to verify",
+      [{ SourceCode: "{{would-be-verified}}" }]
+    );
+    const original = process.env.BSCSCAN_API_KEY;
+    process.env.BSCSCAN_API_KEY = "test-key";
+    try {
+      const state = await pollVerificationStatus(56, TOKEN, d as never);
+      assert.equal(state.status, "failed");
+      assert.ok(!calls.some((c) => c.includes("getsourcecode")), "reconciliation must not run");
+      assert.ok(calls.some((c) => c.includes("checkverifystatus")));
+    } finally {
+      if (original === undefined) delete process.env.BSCSCAN_API_KEY;
+      else process.env.BSCSCAN_API_KEY = original;
+    }
+  });
+
+  it("fresh GUID resets the attempt budget instead of accumulating", async () => {
+    const upstream: string[] = [];
+    const d = deps({
+      fetchImpl: acceptGuid(upstream),
+      viewRecovery: { delaysMs: [0, 0], sleep: async () => {} },
+    });
+    await d.store.getOrCreate(56, TOKEN, TX);
+    await d.store.updateState(56, TOKEN, { status: "failed", attempts: 20, lastErrorCode: "upstream-exception" });
+    await withKey(async () => {
+      const state = await requestVerification(56, TX, d as never);
+      assert.equal(state.status, "pending");
+    });
+    const row = await d.store.findByContract(56, TOKEN);
+    assert.equal(row?.attempts, 1);
+    // Recorded calls strip query strings, so count the single submit POST.
+    assert.equal(
+      upstream.filter((c) => c.startsWith("POST")).length,
+      1,
+      'exactly one upstream submission on resubmit'
+    );
+  });
+
+  it("attempt cap still trips for permanently ambiguous source", async () => {
+    const calls: string[] = [];
+    const d = await seededPendingRow(25);
+    (d as unknown as { nowMs: unknown }).nowMs = STALE_NOW;
+    (d as unknown as { fetchImpl: unknown }).fetchImpl = recordingStub(calls, "Other Exception");
+    const original = process.env.BSCSCAN_API_KEY;
+    process.env.BSCSCAN_API_KEY = "test-key";
+    try {
+      const state = await pollVerificationStatus(56, TOKEN, d as never);
+      assert.equal(state.status, "failed");
+      assert.equal(state.lastErrorCode, "attempts-exhausted");
+      assert.equal(calls.length, 0, "capped rows must not touch upstream");
+    } finally {
+      if (original === undefined) delete process.env.BSCSCAN_API_KEY;
+      else process.env.BSCSCAN_API_KEY = original;
+    }
+  });
+});

@@ -45,6 +45,12 @@ export type VerifyServiceErrorCode =
   | "timeout"
   | "upstream-unavailable"
   | "malformed-response"
+  | "upstream-exception"
+  | "empty-status"
+  | "key-invalid"
+  | "key-throttled"
+  | "pool-exhausted"
+  | "chain-not-covered"
   | "already-verified"
   | "verification-pending"
   | "verification-failed"
@@ -74,6 +80,19 @@ const TERMINAL_CODES = new Set([
   "compiler-mismatch",
   "submission-rejected",
   "config-missing-key",
+]);
+
+/**
+ * Poll error codes whose GUID verdict is uninformative: reconcile via
+ * read-only getsourcecode before recording another blind poll. Positive
+ * source evidence promotes to verified regardless of GUID state; anything
+ * else keeps the original code so polling stays honest.
+ */
+const RECONCILE_CODES: ReadonlySet<string> = new Set([
+  "status-unknown",
+  "upstream-exception",
+  "empty-status",
+  "guid-unknown",
 ]);
 
 export type PublicVerificationState = {
@@ -374,6 +393,16 @@ function toServiceError(error: unknown): VerifyServiceError {
     if (error.code === "config-missing-key") {
       return serviceError("operator-unavailable", 503, false, "verification service unavailable");
     }
+    // Key/plan faults are operator configuration problems, not transient
+    // noise: surface them under their own codes (never generic pending,
+    // never terminal-mismatch). A fresh request after the fix proceeds
+    // because these codes are deliberately absent from TERMINAL_CODES.
+    if (error.code === "key-invalid") {
+      return serviceError("key-invalid", 503, false, "upstream rejected the API key");
+    }
+    if (error.code === "chain-not-covered") {
+      return serviceError("chain-not-covered", 503, false, "api plan does not cover this chain");
+    }
     if (TERMINAL_CODES.has(error.code)) {
       return serviceError("verification-failed", 422, false, error.code);
     }
@@ -388,6 +417,10 @@ function toServiceError(error: unknown): VerifyServiceError {
       "timeout",
       "upstream-unavailable",
       "malformed-response",
+      "upstream-exception",
+      "empty-status",
+      "key-throttled",
+      "pool-exhausted",
     ];
     if (retryable.includes(error.code as VerifyServiceErrorCode)) {
       return serviceError(error.code as VerifyServiceErrorCode, 503, true, error.code);
@@ -516,7 +549,10 @@ export async function requestVerification(
         (await deps.store.updateState(chainId, token, {
           status: "pending",
           guid,
-          attempts: row.attempts + 1,
+          // A genuinely new GUID starts a fresh polling budget: attempts
+          // count upstream I/O for THIS job, so a previously exhausted row
+          // does not starve the new submission on arrival.
+          attempts: 1,
           lastErrorCode: null,
         })) ?? row;
       return publicState({
@@ -706,6 +742,49 @@ export async function pollVerificationStatus(
       });
     } catch (error) {
       const mapped = toServiceError(error);
+      if (RECONCILE_CODES.has(mapped.code)) {
+        try {
+          const shown = await isContractSourceVerified({
+            chainId,
+            contractAddress: token,
+            ...(fetchImpl ? { fetchImpl } : {}),
+          });
+          if (shown) {
+            const updated =
+              (await deps.store.updateState(chainId, token, {
+                status: "verified",
+                guid: null,
+                lastErrorCode: null,
+                verifiedAt: new Date(),
+              })) ?? row;
+            return publicState({
+              chainId,
+              contractAddress: token,
+              status: "verified",
+              alreadyKnown: true,
+              attempts: updated.attempts,
+              lastErrorCode: null,
+              verifiedAt: updated.verifiedAt,
+            });
+          }
+        } catch (reconError) {
+          const reconMapped = toServiceError(reconError);
+          if (!reconMapped.retryable) {
+            // The reconciliation itself proved an operator fault (e.g. the
+            // key is broken): surface it honestly instead of hiding behind
+            // another pending cycle. A fresh request after the fix proceeds
+            // because these codes are absent from TERMINAL_CODES.
+            await deps.store.updateState(chainId, token, {
+              status: "failed",
+              attempts: row.attempts + 1,
+              lastErrorCode: reconMapped.code,
+            });
+            throw reconMapped;
+          }
+          // Retryable reconciliation failure: fall through and remain
+          // pending under the ORIGINAL poll code.
+        }
+      }
       const updated =
         (await deps.store.updateState(chainId, token, {
           status: mapped.retryable ? "pending" : "failed",
