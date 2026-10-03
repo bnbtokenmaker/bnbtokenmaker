@@ -238,3 +238,45 @@ describe("deploy flow — manager link is chain-aware", () => {
     assert.ok(!DEPLOY_FLOW.includes("/manage/97"));
   });
 });
+
+describe("TokenDashboard — manage verification section", () => {
+  it("reuses the shared verification badge instead of duplicating logic", () => {
+    assert.ok(
+      TOKEN_DASHBOARD.includes('import { VerificationBadge } from "../VerificationBadge"'),
+      "must reuse the shared badge"
+    );
+    assert.ok(
+      TOKEN_DASHBOARD.includes("<VerificationBadge chainId={chainId} txHash={txHash} token={token} />"),
+      "badge must receive the resolved deployment txHash"
+    );
+  });
+
+  it("shows verification only for proven V1 tokens", () => {
+    assert.ok(
+      TOKEN_DASHBOARD.includes('{classification.kind === "own-v1" ? ('),
+      "verification section must be gated on own-v1 classification"
+    );
+    assert.ok(
+      TOKEN_DASHBOARD.includes("<ManageVerificationSection chainId={chainId} token={token} />"),
+      "section must be mounted for own-v1 tokens"
+    );
+  });
+
+  it("resolves the deployment txHash server-side from the contract address", () => {
+    assert.ok(
+      TOKEN_DASHBOARD.includes("/api/deployments/by-contract?chainId=${chainId}&contractAddress=${token}"),
+      "txHash must come from the server lookup, never user input"
+    );
+    assert.ok(
+      !/ManageVerificationSection[\s\S]{0,2000}eth_sendTransaction/.test(TOKEN_DASHBOARD),
+      "resolution must involve no blockchain writes"
+    );
+  });
+
+  it("explains unavailable verification without claiming unverified", () => {
+    assert.ok(
+      TOKEN_DASHBOARD.includes("no deployment record was found for this token"),
+      "missing records must render an unavailable note, not a negative verdict"
+    );
+  });
+});

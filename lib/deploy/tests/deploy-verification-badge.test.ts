@@ -8,10 +8,18 @@ import { fileURLToPath } from "node:url";
 
 import {
   SuccessPanel,
+} from "../../../components/DeployFlow";
+import {
+  fetchWithTimeout,
+  runVerificationFlow,
   VERIFICATION_BADGE_COPY,
   VerificationBadge,
   VerificationBadgeView,
-} from "../../../components/DeployFlow";
+  VERIFY_MAX_POLLS,
+  VERIFY_POLL_INTERVAL_MS,
+  VERIFY_POST_TIMEOUT_MS,
+  VERIFY_STATUS_TIMEOUT_MS,
+} from "../../../components/VerificationBadge";
 import {
   BSC_MAINNET_CHAIN_ID,
   BSC_TESTNET_CHAIN_ID,
@@ -53,7 +61,7 @@ function renderView(
   showRetry = false
 ): string {
   return renderToStaticMarkup(
-    createElement(VerificationBadgeView, { state, explorerUrl, showRetry, onRetry: noop })
+    createElement(VerificationBadgeView, { state, explorerUrl, showRetry, busy: false, onRetry: noop })
   );
 }
 
@@ -72,7 +80,7 @@ describe("verification badge — honest states", () => {
 
   it("renders pending without ever claiming verified", () => {
     const html = renderView("pending");
-    assert.ok(html.includes("Pending"));
+    assert.ok(html.includes("Verification pending…"));
     assert.ok(!html.includes("Verified on BscScan"));
     assert.ok(!html.includes("Retry"));
   });
@@ -80,7 +88,7 @@ describe("verification badge — honest states", () => {
   it("renders verified only with the chain-aware BscScan link", () => {
     const url = `https://bscscan.com/address/${TOKEN}`;
     const html = renderView("verified", url);
-    assert.ok(html.includes("Verified on BscScan"));
+    assert.ok(html.includes("Verified on BscScan ✓"));
     assert.ok(html.includes(`href="${url}"`));
     assert.ok(!html.includes("Retry"));
   });
@@ -88,7 +96,7 @@ describe("verification badge — honest states", () => {
   it("renders failed with an explicit retry", () => {
     const html = renderView("failed", null, true);
     assert.ok(html.includes("Verification needs another try"));
-    assert.ok(html.includes("Retry"));
+    assert.ok(html.includes("Retry verification"));
     assert.ok(!html.includes("Verified on BscScan"));
   });
 
@@ -102,8 +110,8 @@ describe("verification badge — honest states", () => {
 
   it("uses the required copy", () => {
     assert.equal(VERIFICATION_BADGE_COPY.checking.body, "Checking BscScan…");
-    assert.equal(VERIFICATION_BADGE_COPY.pending.body, "Pending");
-    assert.equal(VERIFICATION_BADGE_COPY.verified.body, "Verified on BscScan");
+    assert.equal(VERIFICATION_BADGE_COPY.pending.body, "Verification pending…");
+    assert.equal(VERIFICATION_BADGE_COPY.verified.body, "Verified on BscScan ✓");
     assert.equal(VERIFICATION_BADGE_COPY.failed.body, "Verification needs another try");
   });
 });
@@ -117,7 +125,7 @@ describe("verification badge — success integration", () => {
 
   it("badge links use the canonical chain-aware explorer helper", () => {
     const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-    const source = readFileSync(join(ROOT, "components/DeployFlow.tsx"), "utf8");
+    const source = readFileSync(join(ROOT, "components/VerificationBadge.tsx"), "utf8");
     assert.ok(source.includes("v1ExplorerAddressUrl(chainId, token)"));
     const start = source.indexOf("export function VerificationBadge({");
     const end = source.indexOf("\nexport ", start + 10);
@@ -128,14 +136,14 @@ describe("verification badge — success integration", () => {
 
   it("badge posts only chainId and txHash (structural)", () => {
     const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-    const source = readFileSync(join(ROOT, "components/DeployFlow.tsx"), "utf8");
+    const source = readFileSync(join(ROOT, "components/VerificationBadge.tsx"), "utf8");
     assert.ok(source.includes('"/api/deployments/verify"'));
     assert.ok(source.includes("JSON.stringify({ chainId, txHash })"));
   });
 
   it("badge polls on a bounded cadence", () => {
     const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-    const source = readFileSync(join(ROOT, "components/DeployFlow.tsx"), "utf8");
+    const source = readFileSync(join(ROOT, "components/VerificationBadge.tsx"), "utf8");
     assert.ok(source.includes("VERIFY_MAX_POLLS"));
     assert.ok(source.includes("VERIFY_POLL_INTERVAL_MS"));
     assert.ok(!/while\s*\(\s*true/.test(source));
@@ -158,5 +166,182 @@ describe("verification badge — success integration", () => {
       })
     );
     assert.ok(html.includes("Checking BscScan…"));
+  });
+});
+
+describe("verification flow runner", () => {
+  function track() {
+    const states: string[] = [];
+    let polls = 0;
+    let submits = 0;
+    let cancelled = false;
+    return {
+      states,
+      counts: () => ({ polls, submits }),
+      cancel: () => {
+        cancelled = true;
+      },
+      submit: (value: string | null) => async () => {
+        submits += 1;
+        return value;
+      },
+      poller: (values: Array<string | null>) => async () => {
+        polls += 1;
+        return values[Math.min(polls - 1, values.length - 1)] ?? null;
+      },
+      run: (submit: () => Promise<string | null>, pollStatus: () => Promise<string | null>, maxPolls = 3) =>
+        runVerificationFlow({
+          submit,
+          pollStatus,
+          maxPolls,
+          pollIntervalMs: 5,
+          sleep: async () => {},
+          onState: (s: string) => {
+            states.push(s);
+          },
+          isCancelled: () => cancelled,
+        }),
+    };
+  }
+
+  it("stops immediately on verified submit without polling", async () => {
+    const t = track();
+    await t.run(t.submit("verified"), t.poller([]));
+    assert.deepEqual(t.states, ["verified"]);
+    assert.equal(t.counts().polls, 0);
+  });
+
+  it("stops immediately on failed submit", async () => {
+    const t = track();
+    await t.run(t.submit("failed"), t.poller([]));
+    assert.deepEqual(t.states, ["failed"]);
+    assert.equal(t.counts().polls, 0);
+  });
+
+  it("recovers pending into verified through bounded polls", async () => {
+    const t = track();
+    await t.run(t.submit("pending"), t.poller(["pending", "verified"]));
+    assert.deepEqual(t.states, ["pending", "pending", "verified"]);
+    assert.equal(t.counts().polls, 2);
+  });
+
+  it("ends exhausted polling in failed so Retry is reachable", async () => {
+    const t = track();
+    await t.run(t.submit(null), t.poller([null, null, null, null]), 2);
+    assert.deepEqual(t.states, ["pending", "pending", "pending", "failed"]);
+    assert.equal(t.counts().polls, 2);
+  });
+
+  it("treats repeated not_started as exhaustion with Retry", async () => {
+    const t = track();
+    await t.run(t.submit("not_started"), t.poller(["not_started"]), 2);
+    assert.deepEqual(t.states, ["pending", "pending", "pending", "failed"]);
+  });
+
+  it("stops calling polls after cancellation", async () => {
+    const t = track();
+    let calls = 0;
+    await t.run(t.submit("pending"), async () => {
+      calls += 1;
+      t.cancel();
+      return "pending";
+    });
+    assert.equal(calls, 1);
+    assert.deepEqual(t.states, ["pending"]);
+  });
+
+  it("a fresh run submits exactly once (Retry parity)", async () => {
+    const t = track();
+    await t.run(t.submit("failed"), t.poller([]));
+    await t.run(t.submit("failed"), t.poller([]));
+    assert.equal(t.counts().submits, 2);
+  });
+
+  it("uses the bounded poll constants", () => {
+    assert.equal(VERIFY_MAX_POLLS, 20);
+    assert.equal(VERIFY_POLL_INTERVAL_MS, 20_000);
+    assert.equal(VERIFY_POST_TIMEOUT_MS, 45_000);
+    assert.equal(VERIFY_STATUS_TIMEOUT_MS, 25_000);
+  });
+});
+
+describe("fetchWithTimeout", () => {
+  const originalFetch = globalThis.fetch;
+
+  function stubFetch(
+    handler: (input: string, init?: RequestInit) => Promise<unknown>,
+    onSignal?: (signal: AbortSignal | null) => void
+  ): void {
+    (globalThis as { fetch: unknown }).fetch = (async (input: string, init?: RequestInit) => {
+      onSignal?.(init?.signal ?? null);
+      return handler(input, init);
+    }) as never;
+  }
+
+  it("resolves normally within budget", async () => {
+    stubFetch(async () => ({ ok: true }));
+    try {
+      const res = (await fetchWithTimeout("https://x", undefined, 1000)) as { ok: boolean };
+      assert.equal(res.ok, true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("rejects on timeout and aborts the underlying request", async () => {
+    let aborted: boolean | null = null;
+    stubFetch(
+      (_input, init) =>
+        new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            aborted = true;
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          });
+        }),
+      (signal) => {
+        signal?.addEventListener("abort", () => {
+          if (aborted === null) aborted = true;
+        });
+      }
+    );
+    try {
+      await assert.rejects(fetchWithTimeout("https://x", undefined, 15), /verification-fetch-timeout/);
+      assert.equal(aborted, true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("propagates parent aborts as non-timeout errors", async () => {
+    const controller = new AbortController();
+    stubFetch(async () => {
+      controller.abort();
+      await new Promise((_, reject) => {
+        setTimeout(() => reject(Object.assign(new Error("aborted"), { name: "AbortError" })), 5);
+      });
+      return { ok: true };
+    });
+    try {
+      await assert.rejects(
+        fetchWithTimeout("https://x", undefined, 1000, controller.signal),
+        (e: unknown) => e instanceof Error && !/verification-fetch-timeout/.test(e.message)
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("verification badge — security posture", () => {
+  it("never invokes wallet or signing APIs", () => {
+    const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+    const source = readFileSync(join(ROOT, "components/VerificationBadge.tsx"), "utf8");
+    assert.ok(!/wagmi|useConnection|ethereum|signTransaction|signMessage|sendTransaction/i.test(source));
+  });
+
+  it("disables Retry while a submit is running", () => {
+    const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+    const source = readFileSync(join(ROOT, "components/VerificationBadge.tsx"), "utf8");
+    assert.ok(source.includes("disabled={busy}"));
   });
 });

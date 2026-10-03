@@ -85,6 +85,11 @@ describe("submit verification", () => {
       assert.equal(params.get("contractname"), "contracts/BNBTokenMakerToken.sol:BNBTokenMakerToken");
       assert.equal(params.get("compilerversion"), "v0.8.28+commit.7893614a");
       assert.equal(params.get("constructorArguements"), "aabbcc");
+      assert.equal(
+        params.get("constructorArguments"),
+        "aabbcc",
+        "both documented spellings carry the identical raw-hex value"
+      );
       assert.equal(params.get("optimizationUsed"), "1");
       assert.equal(params.get("runs"), "200");
       assert.equal(params.get("licenseType"), "3");
@@ -164,6 +169,29 @@ describe("submit verification", () => {
       assert.ok(error instanceof BscScanError);
       assert.equal(error.code, "already-verified");
       assert.equal(error.retryable, false);
+    });
+  });
+
+  it("classifies indexing delay as retryable, never terminal", async () => {
+    await withKey(async () => {
+      for (const result of [
+        "Unable to locate ContractCode at 0x817683366DfAF428a4972bcF314731F9728Dbb66",
+        "unable to locate  contractcode at 0x1234",
+      ]) {
+        const error = await submitVerification({
+          chainId: 56,
+          contractAddress: ADDRESS,
+          standardJson: "{}",
+          constructorArgsHex: "",
+          fetchImpl: stubFetch(() => jsonBody({ status: "0", message: "NOTOK", result })),
+        }).then(
+          () => null,
+          (e: unknown) => e
+        );
+        assert.ok(error instanceof BscScanError, result);
+        assert.equal((error as BscScanError).code, "indexing-delay");
+        assert.equal((error as BscScanError).retryable, true);
+      }
     });
   });
 

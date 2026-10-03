@@ -3,12 +3,14 @@ import { describe, it } from "node:test";
 
 import {
   authorizationFingerprint,
+  bpsToPercentString,
   isGasEstimateReady,
   isPackageOwnerMatch,
   isPackageUsable,
   packageToCalldata,
   parseDeploymentPackage,
   parseHumanToBaseUnits,
+  percentStringToBps,
   percentToBaseUnits,
   validateV1Form,
   V1_FORM_DEFAULTS,
@@ -416,5 +418,45 @@ describe("v1-config — gas estimate readiness (no false failure pre-authorizati
     assert.equal(ready({ address: null }), false);
     assert.equal(ready({ hasQuote: false }), false);
     assert.equal(ready({ reviewValid: false }), false);
+  });
+});
+
+describe("tax percentage helpers", () => {
+  it("converts accepted percentages to integer bps without floats", async () => {
+    assert.equal(percentStringToBps("4"), 400);
+    assert.equal(percentStringToBps("6"), 600);
+    assert.equal(percentStringToBps("0.5"), 50);
+    assert.equal(percentStringToBps("1.25"), 125);
+    assert.equal(percentStringToBps("0.01"), 1);
+    assert.equal(percentStringToBps("10"), 1000);
+    assert.equal(percentStringToBps("0"), 0);
+    assert.equal(percentStringToBps("10.00"), 1000);
+    assert.equal(bpsToPercentString(400), "4");
+    assert.equal(bpsToPercentString("600"), "6");
+    assert.equal(bpsToPercentString(50), "0.5");
+    assert.equal(bpsToPercentString(125), "1.25");
+    assert.equal(bpsToPercentString(1), "0.01");
+    assert.equal(bpsToPercentString(1000), "10");
+    assert.equal(bpsToPercentString(0), "0");
+  });
+
+  it("rejects unrepresentable and out-of-range percentages without rounding", async () => {
+    for (const bad of ["-1", "10.01", "0.005", "1.234", "abc", "NaN", "Infinity", "", "  ", "4.", ".5", "100"]) {
+      assert.equal(percentStringToBps(bad), null, bad);
+    }
+  });
+
+  it("keeps the authorize payload in integer BPS", () => {
+    const v = validateV1Form(
+      form({ trading: true, buyTaxBps: "400", sellTaxBps: "600", marketingWallet: OWNER }),
+      OWNER
+    );
+    assert.equal(v.ok, true);
+    if (v.ok) {
+      assert.equal(v.input.buyTaxBps, 400);
+      assert.equal(v.input.sellTaxBps, 600);
+      assert.ok(Number.isInteger(v.input.buyTaxBps));
+      assert.ok(Number.isInteger(v.input.sellTaxBps));
+    }
   });
 });

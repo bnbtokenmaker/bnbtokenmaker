@@ -39,6 +39,8 @@ import type { DraftConfig } from "../lib/draft";
 import { formatDiscountPercent } from "../lib/pricing/discount-percent";
 import { useSupplyField } from "./useSupplyField";
 import {
+  bpsToPercentString,
+  percentStringToBps,
   validateV1Form,
   type V1FormState,
 } from "../lib/deploy/v1-config";
@@ -107,6 +109,59 @@ function reconstructConfig(dto: PricingConfigDto): ConfigState {
           : new PricingError("invalid-config", "pricing configuration could not be loaded"),
     };
   }
+}
+
+/**
+ * Tax input in human percentages with integer-BPS internals.
+ *
+ * The visible field edits a percentage ("4", "0.5"); the parent state
+ * keeps canonical integer BPS strings ("400", "50") so drafts, validation
+ * and the authorize payload never change shape. While typing, the raw text
+ * is preserved locally (no cursor-fighting reformat); on blur it snaps to
+ * the canonical form. Unparseable text clears the BPS value so validation
+ * reports it — never silently rounds.
+ */
+function PercentTaxInput({
+  id,
+  label,
+  bpsValue,
+  onBpsChange,
+}: {
+  id: string;
+  label: string;
+  bpsValue: string;
+  onBpsChange: (bps: string) => void;
+}) {
+  const [text, setText] = useState<string | null>(null);
+  const shown = text ?? bpsToPercentString(bpsValue);
+  return (
+    <span className="xrow">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        type="text"
+        inputMode="decimal"
+        placeholder="0"
+        value={shown}
+        onChange={(e) => {
+          const raw = e.target.value.replace(/[^0-9.]/g, "");
+          const dot = raw.indexOf(".");
+          const clean =
+            dot === -1
+              ? raw.slice(0, 2)
+              : `${raw.slice(0, dot).slice(-2)}.${raw.slice(dot + 1).replace(/\./g, "").slice(0, 2)}`;
+          setText(clean);
+          if (clean === "" || clean === ".") {
+            onBpsChange("");
+            return;
+          }
+          const bps = percentStringToBps(clean);
+          if (bps !== null) onBpsChange(String(bps));
+        }}
+        onBlur={() => setText(null)}
+      />
+    </span>
+  );
 }
 
 type CreateBuilderProps = {
@@ -951,15 +1006,9 @@ export function CreateBuilder({
                 )}
                 {feats.trading && (
                   <span className="f-extra" id="xr-trading">
-                    <span className="xrow">
-                      <label htmlFor="x-buytax">Buy tax (bps, ≤1000)</label>
-                      <input id="x-buytax" type="number" value={buyTax} min={0} max={1000} step={1} inputMode="numeric" onChange={(e) => setBuyTax(e.target.value.replace(/\D/g, "").slice(0, 4))} />
-                    </span>
-                    <span className="xrow">
-                      <label htmlFor="x-selltax">Sell tax (bps, ≤1000)</label>
-                      <input id="x-selltax" type="number" value={sellTax} min={0} max={1000} step={1} inputMode="numeric" onChange={(e) => setSellTax(e.target.value.replace(/\D/g, "").slice(0, 4))} />
-                    </span>
-                    <span className="xhint">100 bps = 1%. Maximum 1000 bps (10%) per side. Taxes apply to buys/sells through liquidity pairs only.</span>
+                    <PercentTaxInput id="x-buytax" label="Buy Tax (%)" bpsValue={buyTax} onBpsChange={setBuyTax} />
+                    <PercentTaxInput id="x-selltax" label="Sell Tax (%)" bpsValue={sellTax} onBpsChange={setSellTax} />
+                    <span className="xhint">Enter a percentage from 0 to 10, up to two decimals (for example 4% or 0.5%). The contract stores whole basis points, so values like 0.005% are rejected rather than rounded. Taxes apply to buys/sells through liquidity pairs only.</span>
                     <span className="xrow">
                       <label htmlFor="x-mktwallet">Marketing wallet</label>
                       <input id="x-mktwallet" type="text" value={mktWallet} spellCheck={false} autoComplete="off" placeholder="0x…" onChange={(e) => setMktWallet(e.target.value.trim())} />
@@ -1005,7 +1054,7 @@ export function CreateBuilder({
                   <span className="f-ic" aria-hidden="true"><i className="fa-solid fa-water"></i></span>
                   <span className="f-txt">
                     <b>Auto-liquidity</b>
-                    <span className="f-desc">PancakeSwap V2 swapBack converts collected tax into locked liquidity. LP goes permanently to the burn address — the platform never receives LP.</span>
+                    <span className="f-desc">Automatically uses part of collected buy/sell taxes to add PancakeSwap V2 liquidity after the swap threshold is reached. The resulting LP tokens are sent to the burn address, so neither you nor the platform can recover them. The remaining tax share is sent to the marketing wallet. Runs only on taxed liquidity-pair trades. Failed swapBack attempts do not block normal transfers.</span>
                   </span>
                 </span>
                 <span className="f-right">

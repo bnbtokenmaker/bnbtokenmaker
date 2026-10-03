@@ -60,10 +60,12 @@ import {
 import { formatWeiBnbCompact, formatWeiBnbDisplay } from "../lib/pricing";
 import { clearDeployDraft } from "../lib/deploy/draft-transfer";
 import { deployNetworkSummary } from "../lib/deploy/deploy-copy";
+import { VerificationBadge } from "./VerificationBadge";
 import { selectedFeatureIds, type FeatureSelection } from "../lib/pricing/presets";
 import { factoryAddress, v1FactoryAddress } from "../lib/token/factory";
 import {
   authorizationFingerprint,
+  bpsToPercentString,
   isGasEstimateReady,
   isPackageOwnerMatch,
   isPackageUsable,
@@ -126,7 +128,7 @@ import {
   type PendingDeployment,
 } from "../lib/deploy/tx";
 import { requestDeploymentRecord } from "../lib/deploy/record-client";
-import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID, isSupportedV1ChainId, v1ExplorerAddressUrl, v1ExplorerTokenUrl, v1ExplorerTxUrl } from "../lib/deploy/chains";
+import { BSC_MAINNET_CHAIN_ID, BSC_TESTNET_CHAIN_ID, isSupportedV1ChainId, v1ExplorerTokenUrl, v1ExplorerTxUrl } from "../lib/deploy/chains";
 
 const RECEIPT_TIMEOUT_MS = 120_000;
 
@@ -319,168 +321,6 @@ export function SuccessPanel({
         <VerificationBadge chainId={intendedChainId} txHash={txHash} token={token} />
       ) : null}
     </div>
-  );
-}
-
-/**
- * BscScan source-verification badge (async, non-blocking).
- *
- * Mounted by SuccessPanel only AFTER a confirmed deployment. On mount it
- * fire-and-forgets POST /api/deployments/verify {chainId, txHash} — the
- * server proves the deployment and submits — then polls the persisted
- * status on a bounded cadence. Verification can only ADD information:
- * it never hides or replaces "Token deployed successfully", and
- * "Verified on BscScan" renders ONLY on authoritative verified state.
- * On-chain provenance ("CREATED WITH BNBTOKENMAKER") lives in the token
- * manager and is never mentioned here: the two facts stay separate.
- */
-export type VerificationBadgeState = "checking" | "pending" | "verified" | "failed";
-
-const VERIFY_POLL_INTERVAL_MS = 20_000;
-const VERIFY_MAX_POLLS = 20;
-
-export const VERIFICATION_BADGE_COPY = {
-  checking: { title: "Source verification", body: "Checking BscScan…" },
-  pending: { title: "Source verification", body: "Pending" },
-  verified: { title: "Source verification", body: "Verified on BscScan" },
-  failed: { title: "Source verification", body: "Verification needs another try" },
-} as const;
-
-export function VerificationBadgeView({
-  state,
-  explorerUrl,
-  showRetry,
-  onRetry,
-}: {
-  state: VerificationBadgeState;
-  explorerUrl: string | null;
-  showRetry: boolean;
-  onRetry: () => void;
-}) {
-  const copy = VERIFICATION_BADGE_COPY[state];
-  return (
-    <div
-      className="deploy-verify"
-      role={state === "failed" ? "alert" : "status"}
-    >
-      <span className="deploy-verify-label">{copy.title}</span>{" "}
-      <span className="deploy-verify-state">{copy.body}</span>
-      {state === "verified" && explorerUrl ? (
-        <>
-          {" "}
-          <a
-            className="linklike"
-            href={explorerUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            View on BscScan
-          </a>
-        </>
-      ) : null}
-      {showRetry ? (
-        <>
-          {" "}
-          <button type="button" className="linklike" onClick={onRetry}>
-            Retry
-          </button>
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-export function VerificationBadge({
-  chainId,
-  txHash,
-  token,
-}: {
-  chainId: number;
-  txHash: `0x${string}`;
-  token: `0x${string}`;
-}) {
-  const [state, setState] = useState<VerificationBadgeState>("checking");
-  const [exhausted, setExhausted] = useState(false);
-  const [retryNonce, setRetryNonce] = useState(0);
-  const explorerUrl = v1ExplorerAddressUrl(chainId, token);
-  useEffect(() => {
-    let cancelled = false;
-    const timers: Array<ReturnType<typeof setTimeout>> = [];
-    const sleep = (ms: number) =>
-      new Promise<void>((resolve) => {
-        timers.push(setTimeout(resolve, ms));
-      });
-    // Returns true when a terminal state was reached.
-    const apply = (status: unknown): boolean => {
-      if (cancelled) return true;
-      if (status === "verified") {
-        setState("verified");
-        return true;
-      }
-      if (status === "failed") {
-        setState("failed");
-        return true;
-      }
-      setState(status === "pending" ? "pending" : "checking");
-      return false;
-    };
-    const readState = async (res: Response | null): Promise<boolean> => {
-      try {
-        const body = res ? ((await res.json().catch(() => null)) as unknown) : null;
-        const record = (body as { verification?: { status?: unknown } } | null)?.verification;
-        return apply(record?.status);
-      } catch {
-        return false;
-      }
-    };
-    const submit = async (): Promise<boolean> => {
-      try {
-        const res = await fetch("/api/deployments/verify", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ chainId, txHash }),
-        });
-        return await readState(res);
-      } catch {
-        if (!cancelled) setState("pending");
-        return false;
-      }
-    };
-    const poll = async (): Promise<boolean> => {
-      try {
-        const res = await fetch(
-          `/api/deployments/verify?chainId=${chainId}&contractAddress=${token}`
-        );
-        return await readState(res);
-      } catch {
-        return false;
-      }
-    };
-    const run = async () => {
-      if (await submit()) return;
-      for (let i = 0; i < VERIFY_MAX_POLLS; i += 1) {
-        await sleep(VERIFY_POLL_INTERVAL_MS);
-        if (cancelled) return;
-        if (await poll()) return;
-      }
-      if (!cancelled) setExhausted(true);
-    };
-    void run();
-    return () => {
-      cancelled = true;
-      for (const timer of timers) clearTimeout(timer);
-    };
-  }, [chainId, txHash, token, retryNonce]);
-  return (
-    <VerificationBadgeView
-      state={state}
-      explorerUrl={explorerUrl}
-      showRetry={state === "failed" || (state === "pending" && exhausted)}
-      onRetry={() => {
-        setExhausted(false);
-        setRetryNonce((n) => n + 1);
-      }}
-    />
   );
 }
 
@@ -1465,7 +1305,7 @@ export function DeployFlow({
                       <> — {mintMode === "unlimited" ? "unlimited lifetime issuance" : `capped at ${maxSupplyHuman || "—"}`}</>
                     )}
                     {id === "trading" && feats.trading && (
-                      <> — buy {buyTaxBps} bps / sell {sellTaxBps} bps · marketing {shortenAddress(marketingWallet as `0x${string}`)}</>
+                      <> — buy {bpsToPercentString(buyTaxBps)}% / sell {bpsToPercentString(sellTaxBps)}% · marketing {shortenAddress(marketingWallet as `0x${string}`)}</>
                     )}
                     {id === "antiBot" && feats.antiBot && (
                       <> — snipe window {snipeBlocks} blocks</>

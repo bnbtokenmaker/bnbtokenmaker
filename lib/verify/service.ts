@@ -39,6 +39,12 @@ export type VerifyServiceErrorCode =
   | "event-missing"
   | "non-bnbtokermaker"
   | "evidence-incomplete"
+  | "indexing-delay"
+  | "guid-unknown"
+  | "status-unknown"
+  | "timeout"
+  | "upstream-unavailable"
+  | "malformed-response"
   | "already-verified"
   | "verification-pending"
   | "verification-failed"
@@ -290,6 +296,21 @@ function toServiceError(error: unknown): VerifyServiceError {
     }
     if (TERMINAL_CODES.has(error.code)) {
       return serviceError("verification-failed", 422, false, error.code);
+    }
+    // Preserve specific retryable upstream codes (rate-limited,
+    // indexing-delay, timeouts, …) so clients and stored rows keep the
+    // honest reason instead of a generic "unavailable".
+    const retryable: VerifyServiceErrorCode[] = [
+      "rate-limited",
+      "indexing-delay",
+      "guid-unknown",
+      "status-unknown",
+      "timeout",
+      "upstream-unavailable",
+      "malformed-response",
+    ];
+    if (retryable.includes(error.code as VerifyServiceErrorCode)) {
+      return serviceError(error.code as VerifyServiceErrorCode, 503, true, error.code);
     }
     return serviceError("unavailable", 503, true, error.code);
   }

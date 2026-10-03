@@ -39,6 +39,7 @@ export type BscScanErrorCode =
   | "upstream-unavailable"
   | "timeout"
   | "rate-limited"
+  | "indexing-delay"
   | "malformed-response"
   | "submission-rejected"
   | "already-verified"
@@ -189,8 +190,16 @@ export async function submitVerification(input: SubmitVerificationInput): Promis
   }
   const key = readApiKey();
   const { fetchImpl = fetch as unknown as FetchImpl } = input;
-  // NOTE: `constructorArguements` is the documented Etherscan parameter
-  // spelling (long-standing API typo) — required verbatim.
+  // Constructor arguments are sent under BOTH documented spellings with
+  // identical values. Evidence: the maintained @nomicfoundation/hardhat-verify
+  // integration (the repo's pinned 2.0.14) sends only `constructorArguements`
+  // against this same V2 endpoint and verifies successfully, while the
+  // current Etherscan OpenAPI + verification guide document
+  // `constructorArguments`. Form backends ignore unknown fields, and equal
+  // values admit no semantic ambiguity — so dual submission covers both
+  // backend generations with zero behavioral risk either way.
+  // NOTE: `constructorArguements` is the historical Etherscan API typo,
+  // kept verbatim (not a typo in this file).
   const { status, result } = await postForm(
     apiUrl(input.chainId),
     {
@@ -204,6 +213,7 @@ export async function submitVerification(input: SubmitVerificationInput): Promis
       contractname: VERIFY_CONTRACT_FQN,
       compilerversion: VERIFY_COMPILERVERSION_PARAM,
       constructorArguements: input.constructorArgsHex,
+      constructorArguments: input.constructorArgsHex,
       optimizationUsed: "1",
       runs: "200",
       licenseType: String(VERIFY_LICENSE_TYPE_MIT),
@@ -223,6 +233,12 @@ export async function submitVerification(input: SubmitVerificationInput): Promis
   }
   if (lower.includes("invalid api key") || lower.includes("missing") && lower.includes("apikey")) {
     throw new BscScanError("config-missing-key", false, "upstream rejected the API key");
+  }
+  // BscScan has not indexed the contract yet (standard immediately after
+  // deployment). Retryable — must never become a terminal mismatch. The
+  // match is case/whitespace-insensitive; `lower` is already normalized.
+  if (lower.replace(/\s+/g, " ").includes("unable to locate contractcode")) {
+    throw new BscScanError("indexing-delay", true, sanitize(text) || "contract not indexed yet");
   }
   if (
     lower.includes("compiler") ||

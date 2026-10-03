@@ -118,6 +118,36 @@ function bpsInRange(raw: string, max = 1000): number | null {
 }
 
 /**
+ * Human percentage string (e.g. "4", "0.5", "1.25") → integer basis
+ * points. Decimal-safe string arithmetic ONLY — never floating point, so
+ * `percent × 100` is exact. Returns null unless the value is an integer
+ * in 0..1000: contract precision is integer bps, and unrepresentable
+ * values (e.g. "0.005", "1.234") are rejected, never silently rounded.
+ */
+export function percentStringToBps(raw: string): number | null {
+  const text = (raw ?? "").trim();
+  const match = /^(\d{1,2})(?:\.(\d{1,2}))?$/.exec(text);
+  if (!match) return null;
+  const [, whole, fraction = ""] = match;
+  const bps = Number(whole) * 100 + Number((fraction + "00").slice(0, 2));
+  if (!Number.isInteger(bps) || bps < 0 || bps > 1000) return null;
+  return bps;
+}
+
+/**
+ * Integer basis points → trimmed human percentage ("400" → "4",
+ * "50" → "0.5", "125" → "1.25"). Returns "" for non-integers/negatives.
+ */
+export function bpsToPercentString(bps: number | string): string {
+  const n = typeof bps === "string" ? (bps.trim() === "" ? NaN : Number(bps)) : bps;
+  if (!Number.isInteger(n) || n < 0) return "";
+  const whole = Math.floor(n / 100);
+  const rest = n % 100;
+  if (rest === 0) return String(whole);
+  return `${whole}.${String(rest).padStart(2, "0").replace(/0$/, "")}`;
+}
+
+/**
  * Validate V1 form state for UX gating (mirrors frozen rules). Returns the
  * canonical authorize input when valid, or field errors when not.
  */

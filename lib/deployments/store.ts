@@ -39,6 +39,13 @@ export type DeploymentStore = {
   upsertDeployment: (record: VerifiedDeploymentRecord) => Promise<UpsertResult>;
   findByTx: (chainId: number, txHash: string) => Promise<DeploymentRow | null>;
   /**
+   * Read-only lookup of a recorded deployment by contract address.
+   * Returns PUBLIC on-chain facts only (same posture as listByDeployer).
+   * Used by the token manager to recover the deployment txHash needed
+   * for the verification flow — never authorization material.
+   */
+  findByContract: (chainId: number, contractAddress: string) => Promise<DeploymentRow | null>;
+  /**
    * Read-only discovery: recent verified deployments by deployer. Returns
    * PUBLIC on-chain facts only (no auth needed, no private data exists in
    * these rows). Callers must still verify on-chain owner() — a deployer
@@ -107,6 +114,21 @@ export class PgDeploymentStore implements DeploymentStore {
     return rows[0] ?? null;
   }
 
+  async findByContract(chainId: number, contractAddress: string): Promise<DeploymentRow | null> {
+    const db = getDb();
+    const rows = await db
+      .select()
+      .from(deployments)
+      .where(
+        and(
+          eq(deployments.chainId, chainId),
+          eq(deployments.contractAddress, contractAddress.toLowerCase())
+        )
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async listByDeployer(
     chainId: number,
     deployer: string,
@@ -169,6 +191,14 @@ export class InMemoryDeploymentStore implements DeploymentStore {
 
   async findByTx(chainId: number, txHash: string): Promise<DeploymentRow | null> {
     return this.rows.get(this.key(chainId, txHash)) ?? null;
+  }
+
+  async findByContract(chainId: number, contractAddress: string): Promise<DeploymentRow | null> {
+    const want = contractAddress.toLowerCase();
+    for (const row of this.rows.values()) {
+      if (row.chainId === chainId && row.contractAddress === want) return row;
+    }
+    return null;
   }
 
   async listByDeployer(

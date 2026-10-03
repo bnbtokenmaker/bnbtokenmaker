@@ -8,6 +8,7 @@ import { formatUnits } from "viem";
 import { isSupportedV1ChainId } from "../../lib/deploy/chains";
 
 import { managerPublicClient } from "../../lib/manage/client";
+import { VerificationBadge } from "../VerificationBadge";
 import { useWalletUI } from "../wallet/WalletUI";
 import {
   classificationLabel,
@@ -371,6 +372,70 @@ function OverviewRow({ label, value }: { label: string; value: React.ReactNode }
   );
 }
 
+/**
+ * Manager-side source-verification section. The manager route carries
+ * chainId + contract address, but the verification flow requires the
+ * deployment txHash — resolved here server-side from our own deployment
+ * persistence (public txHash only), never from user input. Reuses the
+ * shared VerificationBadge, so states, copy, timeouts and Retry are
+ * identical to the deploy success panel. Rendered only for proven V1
+ * tokens; external/unsupported tokens have no factory deployment to
+ * verify.
+ */
+function ManageVerificationSection({
+  chainId,
+  token,
+}: {
+  chainId: number;
+  token: `0x${string}`;
+}) {
+  const [txHash, setTxHash] = useState<`0x${string}` | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  // Reset on render when the inspected token changes (the documented
+  // render-phase adjustment pattern — never a setState-in-effect).
+  const [prevTarget, setPrevTarget] = useState({ chainId, token });
+  if (prevTarget.chainId !== chainId || prevTarget.token !== token) {
+    setPrevTarget({ chainId, token });
+    setTxHash(null);
+    setUnavailable(false);
+  }
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/deployments/by-contract?chainId=${chainId}&contractAddress=${token}`
+        );
+        const body = await res.json().catch(() => null);
+        const hash = (body as { txHash?: unknown } | null)?.txHash;
+        if (cancelled) return;
+        if (typeof hash === "string" && /^0x[a-fA-F0-9]{64}$/.test(hash)) {
+          setTxHash(hash as `0x${string}`);
+        } else {
+          setUnavailable(true);
+        }
+      } catch {
+        if (!cancelled) setUnavailable(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [chainId, token]);
+  if (unavailable) {
+    return (
+      <div className="deploy-card" role="note">
+        <h3>Source verification</h3>
+        <p className="deploy-muted">
+          Verification is unavailable: no deployment record was found for this token.
+        </p>
+      </div>
+    );
+  }
+  if (!txHash) return null;
+  return <VerificationBadge chainId={chainId} txHash={txHash} token={token} />;
+}
+
 function DashboardBody({
   data,
   account,
@@ -416,6 +481,9 @@ function DashboardBody({
         <p className="deploy-muted">
           This label reflects on-chain provenance evidence — not BscScan source verification.
         </p>
+        {classification.kind === "own-v1" ? (
+          <ManageVerificationSection chainId={chainId} token={token} />
+        ) : null}
         <dl className="deploy-review">
           <OverviewRow label="Contract" value={<code className="mono">{token}</code>} />
           <OverviewRow label="Decimals" value={decimals ?? "—"} />
