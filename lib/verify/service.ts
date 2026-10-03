@@ -100,6 +100,15 @@ export type VerifyServiceDeps = {
   store: VerificationStore;
   fetchImpl?: FetchImpl;
   nowMs?: () => number;
+  /**
+   * Test-only recovery tuning (delays/sleep). Production omits this and
+   * gets the conservative defaults (3 attempts, 400/800 ms real backoff).
+   */
+  viewRecovery?: {
+    maxAttempts?: number;
+    delaysMs?: readonly number[];
+    sleep?: (ms: number) => Promise<void>;
+  };
 };
 
 function serviceError(
@@ -187,8 +196,11 @@ async function proveDeployment(
  * Prove V1 provenance on-chain and reconstruct the exact constructor
  * values. All 22 fields must be present with correct types; anything less
  * is evidence-incomplete (retryable), never a negative verdict.
+ *
+ * Exported for regression tests so the reader-faithful seam (real reader
+ * request list → this function → encoder) is exercised directly.
  */
-async function proveProvenanceAndReconstruct(
+export async function proveProvenanceAndReconstruct(
   record: Awaited<ReturnType<typeof verifyDeployment>>,
   readTokenViews: (token: `0x${string}`) => Promise<Record<string, unknown> | null>
 ) {
@@ -233,21 +245,30 @@ async function proveProvenanceAndReconstruct(
   const get = (name: string): unknown => views?.[name];
   const big = (name: string): bigint => {
     const v = get(name);
-    if (typeof v !== "bigint" || v < 0n) {
+    if (v === undefined || v === null) {
       throw serviceError("evidence-incomplete", 503, true, `view ${name} unavailable`);
+    }
+    if (typeof v !== "bigint" || v < 0n) {
+      throw serviceError("evidence-incomplete", 503, true, `view ${name} has unexpected type`);
     }
     return v;
   };
   const bool = (name: string): boolean => {
     const v = get(name);
-    if (typeof v !== "boolean") {
+    if (v === undefined || v === null) {
       throw serviceError("evidence-incomplete", 503, true, `view ${name} unavailable`);
+    }
+    if (typeof v !== "boolean") {
+      throw serviceError("evidence-incomplete", 503, true, `view ${name} has unexpected type`);
     }
     return v;
   };
   const addr = (name: string): `0x${string}` => {
+    if (get(name) === undefined || get(name) === null) {
+      throw serviceError("evidence-incomplete", 503, true, `view ${name} unavailable`);
+    }
     const v = asAddress(get(name));
-    if (!v) throw serviceError("evidence-incomplete", 503, true, `view ${name} unavailable`);
+    if (!v) throw serviceError("evidence-incomplete", 503, true, `view ${name} has unexpected type`);
     return v;
   };
   const evidence: ProvenDeploymentEvidence = {
@@ -283,6 +304,65 @@ async function proveProvenanceAndReconstruct(
   } catch {
     throw serviceError("evidence-incomplete", 503, true, "constructor evidence malformed");
   }
+}
+
+/**
+ * Bounded recovery for transient token-view RPC incompleteness.
+ *
+ * Retries ONLY evidence that is missing/unavailable (every retryable
+ * throw in proveProvenanceAndReconstruct ends in "unavailable").
+ * Terminal provenance failures (factory/generator/owner mismatch),
+ * malformed deterministic evidence, unsupported chains and invalid
+ * deployments are never retried — they propagate on the first attempt.
+ * Maximum 3 attempts total (immediate, ~400 ms, ~800 ms); the final
+ * incomplete attempt rethrows the honest evidence-incomplete error.
+ * No loops, no polling, no client/browser retry involvement.
+ */
+export const VIEW_RECOVERY_MAX_ATTEMPTS = 3;
+export const VIEW_RECOVERY_DELAYS_MS = [400, 800] as const;
+
+export function isRetryableEvidenceError(error: unknown): boolean {
+  return (
+    error instanceof VerifyServiceError &&
+    error.code === "evidence-incomplete" &&
+    error.message.endsWith("unavailable")
+  );
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+export async function withBoundedViewRecovery<T>(
+  attempt: () => Promise<T>,
+  options: {
+    maxAttempts?: number;
+    delaysMs?: readonly number[];
+    sleep?: (ms: number) => Promise<void>;
+    onAttempt?: (attempt: number) => void;
+  } = {}
+): Promise<T> {
+  const maxAttempts = options.maxAttempts ?? VIEW_RECOVERY_MAX_ATTEMPTS;
+  const sleep = options.sleep ?? defaultSleep;
+  let lastError: unknown = null;
+  for (let n = 1; n <= maxAttempts; n += 1) {
+    options.onAttempt?.(n);
+    try {
+      return await attempt();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableEvidenceError(error) || n >= maxAttempts) throw error;
+      const wait =
+        options.delaysMs?.[n - 1] ??
+        VIEW_RECOVERY_DELAYS_MS[n - 1] ??
+        VIEW_RECOVERY_DELAYS_MS[VIEW_RECOVERY_DELAYS_MS.length - 1] ??
+        800;
+      if (wait > 0) await sleep(wait);
+    }
+  }
+  throw lastError;
 }
 
 function toServiceError(error: unknown): VerifyServiceError {
@@ -385,7 +465,12 @@ export async function requestVerification(
         verifiedAt: null,
       });
     }
-    const constructorValues = await proveProvenanceAndReconstruct(record, readTokenViews);
+    const constructorValues = await withBoundedViewRecovery(
+      () => proveProvenanceAndReconstruct(record, readTokenViews),
+      {
+        ...(deps.viewRecovery ?? {}),
+      }
+    );
     const constructorArgsHex = encodeTokenConstructorArgs(constructorValues);
     const standardJson = buildStandardJson(chainId);
     const { fetchImpl } = deps;

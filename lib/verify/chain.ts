@@ -42,6 +42,13 @@ export const VERIFY_VIEW_NAMES = [
   "swapThreshold",
   "antiBotEnabled",
   "snipeBlocks",
+  "burnable",
+  "mintable",
+  "pausable",
+  "maxTxAmount",
+  "maxWalletAmount",
+  "blacklistEnabled",
+  "whitelistEnabled",
 ] as const;
 
 export async function readTokenConstructorViews(
