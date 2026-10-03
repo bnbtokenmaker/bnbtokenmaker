@@ -1,0 +1,3 @@
+{
+  "/manage/[chainId]/[tokenAddress]/page": "app/manage/[chainId]/[tokenAddress]/page.js"
+}

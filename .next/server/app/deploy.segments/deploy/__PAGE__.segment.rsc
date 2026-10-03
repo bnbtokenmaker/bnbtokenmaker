@@ -1,0 +1,23 @@
+1:"$Sreact.fragment"
+2:I[98834,["/_next/static/chunks/06zmi-h5jfldo.js","/_next/static/chunks/3r0nbroftfmiu.js","/_next/static/chunks/2w9cm4pak2e15.js","/_next/static/chunks/3srlhhpa1tyj7.js","/_next/static/chunks/2hlmlky_xfgil.js","/_next/static/chunks/3alq6t5y5ju7w.js","/_next/static/chunks/12crwsq4mwy7a.js","/_next/static/chunks/0nhsh-s1oh6s9.js","/_next/static/chunks/3kk-19tlew5ie.js","/_next/static/chunks/42wfefteojq16.js","/_next/static/chunks/1hb5nsyswdfz0.js","/_next/static/chunks/1yn4odx7lrbrj.js"],"DeployPage"]
+3:I[97367,["/_next/static/chunks/06zmi-h5jfldo.js","/_next/static/chunks/3r0nbroftfmiu.js","/_next/static/chunks/2w9cm4pak2e15.js","/_next/static/chunks/3srlhhpa1tyj7.js","/_next/static/chunks/2hlmlky_xfgil.js","/_next/static/chunks/3alq6t5y5ju7w.js","/_next/static/chunks/12crwsq4mwy7a.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+8:I[97367,["/_next/static/chunks/06zmi-h5jfldo.js","/_next/static/chunks/3r0nbroftfmiu.js","/_next/static/chunks/2w9cm4pak2e15.js","/_next/static/chunks/3srlhhpa1tyj7.js","/_next/static/chunks/2hlmlky_xfgil.js","/_next/static/chunks/3alq6t5y5ju7w.js","/_next/static/chunks/12crwsq4mwy7a.js"],"ViewportBoundary"]
+9:I[97367,["/_next/static/chunks/06zmi-h5jfldo.js","/_next/static/chunks/3r0nbroftfmiu.js","/_next/static/chunks/2w9cm4pak2e15.js","/_next/static/chunks/3srlhhpa1tyj7.js","/_next/static/chunks/2hlmlky_xfgil.js","/_next/static/chunks/3alq6t5y5ju7w.js","/_next/static/chunks/12crwsq4mwy7a.js"],"MetadataBoundary"]
+a:I[27201,["/_next/static/chunks/06zmi-h5jfldo.js","/_next/static/chunks/3r0nbroftfmiu.js","/_next/static/chunks/2w9cm4pak2e15.js","/_next/static/chunks/3srlhhpa1tyj7.js","/_next/static/chunks/2hlmlky_xfgil.js","/_next/static/chunks/3alq6t5y5ju7w.js","/_next/static/chunks/12crwsq4mwy7a.js"],"IconMark"]
+c:I[39756,["/_next/static/chunks/06zmi-h5jfldo.js","/_next/static/chunks/3r0nbroftfmiu.js","/_next/static/chunks/2w9cm4pak2e15.js","/_next/static/chunks/3srlhhpa1tyj7.js","/_next/static/chunks/2hlmlky_xfgil.js","/_next/static/chunks/3alq6t5y5ju7w.js","/_next/static/chunks/12crwsq4mwy7a.js"],"default"]
+d:I[37457,["/_next/static/chunks/06zmi-h5jfldo.js","/_next/static/chunks/3r0nbroftfmiu.js","/_next/static/chunks/2w9cm4pak2e15.js","/_next/static/chunks/3srlhhpa1tyj7.js","/_next/static/chunks/2hlmlky_xfgil.js","/_next/static/chunks/3alq6t5y5ju7w.js","/_next/static/chunks/12crwsq4mwy7a.js"],"default"]
+:HL["/_next/static/chunks/2ui18sp0c5os1.css","style"]
+:HL["/_next/static/chunks/39m32_9pdr-94.css","style"]
+7:X
+f:X
+f:C
+0:{"buildId":"laIl5fq9uKtPV_Ir8Gg4h","data":[{"rsc":["$","$1","c",{"children":[["$","$L2",null,{}],[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/2ui18sp0c5os1.css","precedence":"next"}],["$","link","1",{"rel":"stylesheet","href":"/_next/static/chunks/39m32_9pdr-94.css","precedence":"next"}],["$","script","script-0",{"src":"/_next/static/chunks/0nhsh-s1oh6s9.js","async":true}],["$","script","script-1",{"src":"/_next/static/chunks/3kk-19tlew5ie.js","async":true}],["$","script","script-2",{"src":"/_next/static/chunks/42wfefteojq16.js","async":true}],["$","script","script-3",{"src":"/_next/static/chunks/1hb5nsyswdfz0.js","async":true}],["$","script","script-4",{"src":"/_next/static/chunks/1yn4odx7lrbrj.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":"$@6","staleTime":"$7","varyParams":null},{"rsc":["$","$1","h",{"children":[null,["$","$L8",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]}],["$","div",null,{"hidden":true,"children":["$","$L9",null,{"children":["$","$4",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"Review & Deploy Token — BNB Token Maker"}],["$","meta","1",{"name":"description","content":"Review your BEP-20 token configuration and deploy it to BNB Smart Chain from your wallet."}],["$","meta","2",{"name":"robots","content":"noindex, follow"}],["$","link","3",{"rel":"icon","href":"/favicon.ico","sizes":"16x16 32x32"}],["$","link","4",{"rel":"icon","href":"/icon.svg","type":"image/svg+xml"}],["$","$La","5",{}]]}]}]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}],"isPartial":"$@b","staleTime":"$7","varyParams":null},{"rsc":["$","$1","c",{"children":[null,["$","$Lc",null,{"parallelRouterKey":"children","template":["$","$Ld",null,{}]}]]}],"isPartial":"$@e","staleTime":"$7","varyParams":"$f"}],"isUpgradeableISRFallback":false,"a":"$@10","rootVaryParams":null,"needsRuntimeRequest":"$@11"}
+5:null
+11:true
+7:300
+7:C
+10:0
+b:"$undefined"
+e:"$undefined"
+6:"$undefined"
